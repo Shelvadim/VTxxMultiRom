@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Disable auto-include of ALL .cs in this folder.
+         We will list exactly what we want compiled. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk"    Version="17.8.0" />
+    <PackageReference Include="xunit"                     Version="2.6.2"  />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Main project source files (one level up) -->
+    <Compile Include="..\BuildConfig.cs"     />
+    <Compile Include="..\NesRom.cs"          />
+    <Compile Include="..\RomBuilder.cs"      />
+    <Compile Include="..\SpaceCalculator.cs" />
+    <!-- Test files (this folder) -->
+    <Compile Include="TestHelper.cs"          />
+    <Compile Include="BinaryLayoutTests.cs"   />
+    <Compile Include="ChipSizeTests.cs"       />
+    <Compile Include="Mmc3ChrBankTests.cs"    />
+    <Compile Include="Mmc3PrgBankTests.cs"    />
+    <Compile Include="ReferenceGameTests.cs"  />
+  </ItemGroup>
+</Project>

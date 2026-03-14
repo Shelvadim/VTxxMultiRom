@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>VT03Builder</AssemblyName>
+    <RootNamespace>VT03Builder</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Exclude the test subfolder — those files belong to VT03Builder.Tests only -->
+    <Compile Remove="test\**" />
+    <None Remove="test\**" />
+    <EmbeddedResource Remove="test\**" />
+  </ItemGroup>
+
+  <!-- original_menu_patched.rom lives next to VT03Builder.exe at runtime.
+       No project-time copy needed — LoadKernel() finds it automatically. -->
+</Project>
