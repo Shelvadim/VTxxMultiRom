@@ -9,7 +9,7 @@ using VT03Builder.Models;
 namespace VT03Builder.Services
 {
     /// <summary>
-    /// VT03 OneBus Multicart Builder — C# port of Wassermann1/sup400 rom_tool.
+    /// VTXX OneBus Multicart Builder
     ///
     /// ROM Layout (NES 2.0, Mapper 256):
     ///   [0x000000-0x07FFFF]  original_menu_patched.rom (512KB kernel)
