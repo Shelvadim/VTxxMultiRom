@@ -1,7 +1,11 @@
-# VTxx OneBus NOR Flash Multicart — NES 2.0 Mapper 256 https://www.nesdev.org/wiki/NES_2.0_Mapper_256/Submapper_table
 
 
+# VTxx OneBus NOR Flash Multicart — NES 2.0 Mapper 256 
 
+https://www.nesdev.org/wiki/NES_2.0_Mapper_256/Submapper_table
+
+Creates multy game rom for VTxx OneBus  Famiclone consoles with built in games (NES 620in1), portable handheld with TV output (like SUP 400in1). LCD does not support yet.
+Not tested on real hardware yet.
 
 ## Output Files
 
@@ -87,3 +91,8 @@ The VT0x OneBus hardware MMC3 emulator works with most standard MMC3 games but h
 | 16 MB (128 Mbit) | 1.5 MB | 14 MB | 15.5 MB |
 
 The first 512 KB is always occupied by the menu kernel (`original_menu_patched.rom`).
+
+## Resources
+https://github.com/Wassermann1/sup400  dassasembled dump from handheld RetroFC (sup 400in1 game console)
+https://www.nesdev.org/
+
