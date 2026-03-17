@@ -6,9 +6,11 @@ https://www.nesdev.org/wiki/NES_2.0_Mapper_256/Submapper_table
 
 ![Interface](img/interface.png)
 
-Creates multy game rom for VTxx OneBus  Famiclone consoles with built in games (NES 620in1), portable handheld with TV output (like SUP 400in1). LCD does not support yet.
+Creates multy game rom for replase built in games on VTxx OneBus  Famiclone consoles (NES 620in1), portable handheld with TV output (like SUP 400in1). LCD does not support yet.
 Not tested on real hardware yet. 
 Download the latest release or clone the repo and build project. Make shure to have `original_menu_patched.rom` in the same folder as the executable.
+
+Download TVxxMultiRom_win-x64.7z for windows 64-bit: https://github.com/Shelvadim/VTxxMultiRom/releases
 
 ## Output Files
 
