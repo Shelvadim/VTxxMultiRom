@@ -4,8 +4,11 @@
 
 https://www.nesdev.org/wiki/NES_2.0_Mapper_256/Submapper_table
 
+![Interface](img/interface.png)
+
 Creates multy game rom for VTxx OneBus  Famiclone consoles with built in games (NES 620in1), portable handheld with TV output (like SUP 400in1). LCD does not support yet.
-Not tested on real hardware yet.
+Not tested on real hardware yet. 
+Download the latest release or clone the repo and build project. Make shure to have `original_menu_patched.rom` in the same folder as the executable.
 
 ## Output Files
 
@@ -28,26 +31,6 @@ Not tested on real hardware yet.
 
 The VT0x OneBus console uses a **parallel NOR flash** in **TSOP48**  **TSOP56** package, running at **3.3 V**.
 
-### 8 MB (64 Mbit) — recommended
-
-| Part number | Manufacturer | Notes |
-|-------------|-------------|-------|
-| MX29LV640EBXXX | Macronix | Most common in Chinese game consoles |
-| AM29LV640D / S29AL064D | AMD / Spansion | Pin-compatible |
-| EN29LV640 | EON | Pin-compatible |
-| HY29LV640 | Hynix | Pin-compatible |
-| SST39VF6401 / SST39VF6402 | Microchip | Note: bottom/top boot sector variants |
-
-### 16 MB (128 Mbit) — if you need more space
-
-| Part number | Notes |
-|-------------|-------|
-| MX29GL128 | Macronix, TSOP48, 3.3 V |
-| S29GL128 | Spansion, TSOP48, 3.3 V |
-
-> **Tip:** All of the above are pin-compatible 48-pin TSOP parts.
-> The original SUP/RetroFC consoles use MX29LV640 or equivalent.
-> Buy the chip desoldered from a donor board, or new old stock.
 
 ---
 
@@ -84,15 +67,10 @@ The VT0x OneBus hardware MMC3 emulator works with most standard MMC3 games but h
 
 ## Chip Size vs. Capacity
 
-| Chip size | NROM/CNROM area | MMC3 area | Total game space |
-|-----------|----------------|-----------|-----------------|
-| 4 MB (32 Mbit) | 1.5 MB | 2 MB | 3.5 MB |
-| 8 MB (64 Mbit) | 1.5 MB | 6 MB | 7.5 MB |
-| 16 MB (128 Mbit) | 1.5 MB | 14 MB | 15.5 MB |
-
 The first 512 KB is always occupied by the menu kernel (`original_menu_patched.rom`).
 
 ## Resources
 https://github.com/Wassermann1/sup400  dassasembled dump from handheld RetroFC (sup 400in1 game console)
 https://www.nesdev.org/
+NintendulatorNRS https://www.emucr.com/2025/12/nintendulatornrs-20251224.html
 
