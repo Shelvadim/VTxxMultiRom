@@ -117,11 +117,11 @@ namespace VT03Builder.Tests
         }
 
         [Theory]
-        [InlineData( 32,  64,  64)]   // PRG < CHR inner window → must pad
-        [InlineData( 32, 128, 128)]
-        [InlineData( 64, 128, 128)]
-        [InlineData(128, 256, 256)]
-        [InlineData(256, 256, 256)]
+        [InlineData( 32,  64,  32)]   // PRG < CHR inner window → must pad
+        [InlineData( 32, 128,  96)]
+        [InlineData( 64, 128,  64)]
+        [InlineData(128, 256, 128)]
+        [InlineData(256, 256,   0)]   // PRG already a multiple of inner window
         [InlineData( 64,  64,   0)]   // PRG == inner window → no pad needed
         [InlineData(128, 128,   0)]   // PRG == inner window → no pad needed
         public void EffectivePrg_IsAlignedToChrInnerWindow(int prgKb, int chrKb, int expectedPadKb)

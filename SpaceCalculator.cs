@@ -19,30 +19,43 @@ namespace VT03Builder.Services
 
     public static class SpaceCalculator
     {
-        // Kernel occupies the first 512 KB; game data begins at 0x080000.
-        private const long KernelSize = 0x080000L;
+        // Kernel gap regions available for NROM games (480 KB total)
+        private static readonly (int Start, int End)[] KernelFreeRegions =
+        {
+            (0x000000, 0x040000),  // 256 KB
+            (0x041000, 0x079000),  // 224 KB
+        };
+        private const long KernelFreeTotal = (0x040000 - 0x000000) + (0x079000 - 0x041000);  // 480 KB
+        private const long NromOverflow    = 0x200000 - 0x080000;  // 1.5 MB after kernel
+        private const long Mmc3Start       = 0x200000;
 
         public static SpaceInfo Calculate(BuildConfig cfg)
         {
-            long usedBytes = 0;
+            long usedNrom = 0;
+            long usedMmc3 = 0;
 
             foreach (var g in cfg.Games)
             {
                 if (!g.IsValid) continue;
                 int effPrg   = g.Mapper == 4 ? RomBuilder.EffectivePrgForChr(g.PrgSize, g.ChrSize) : g.PrgSize;
                 int gameSize = effPrg + g.ChrSize;
-                // NROM/CNROM: align to 16 KB. MMC3: align to PRG inner-window size.
-                int align = g.Mapper != 4 ? 0x4000 : RomBuilder.PrgAlignFor(g.PrgSize);
-                usedBytes += ((gameSize + align - 1) / align) * align;
+                int align    = g.Mapper != 4 ? RomBuilder.PrgAlignFor(g.PrgSize) : RomBuilder.PrgAlignFor(g.PrgSize);
+                long aligned = ((gameSize + align - 1) / align) * align;
+                if (g.Mapper == 4)
+                    usedMmc3 += aligned;
+                else
+                    usedNrom += aligned;
             }
 
-            long chipTotal  = cfg.ChipSizeBytes;
-            long usable     = chipTotal - KernelSize;
+            // NROM usable = kernel gaps (480 KB) + overflow region (1.5 MB)
+            long nromUsable = KernelFreeTotal + NromOverflow;
+            // MMC3 usable = unbounded (MMC3 always at 0x200000+, no chip size limit)
+            long mmc3Usable = 8L * 1024 * 1024 - Mmc3Start;  // up to 8 MB chip max
 
             return new SpaceInfo
             {
-                UsableBytes = usable,
-                UsedBytes   = usedBytes
+                UsableBytes = nromUsable + mmc3Usable,
+                UsedBytes   = usedNrom + usedMmc3,
             };
         }
     }

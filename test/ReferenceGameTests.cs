@@ -7,7 +7,10 @@ using VT03Builder.Services;
 
 namespace VT03Builder.Tests
 {
-    /// <summary>    
+    /// <summary>
+    /// Verifies byte-for-byte match against known-good configs from the
+    /// Wassermann1/sup400 reference multicart (multicart.nes, 18 games).
+    ///
     /// The 7 contiguous reference games (Batman through Felix) are packed
     /// sequentially at 0x200000 with no gaps and can be verified exactly.
     /// Games 7–9 (Little Mermaid, Ninja Gaiden, SMB2) sit at different absolute

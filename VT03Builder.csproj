@@ -9,13 +9,18 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Exclude the test\ subfolder from the main project completely -->
   <ItemGroup>
-    <!-- Exclude the test subfolder — those files belong to VT03Builder.Tests only -->
     <Compile Remove="test\**" />
-    <None Remove="test\**" />
     <EmbeddedResource Remove="test\**" />
+    <None Remove="test\**" />
   </ItemGroup>
 
-  <!-- original_menu_patched.rom lives next to VT03Builder.exe at runtime.
-       No project-time copy needed — LoadKernel() finds it automatically. -->
+  <!-- Kernel ROM embedded as a resource -->
+  <ItemGroup>
+    <EmbeddedResource Include="original_menu_patched.rom">
+      <LogicalName>original_menu_patched.rom</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

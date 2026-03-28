@@ -25,6 +25,7 @@ namespace VT03Builder.Forms
         private Button      _btnBrowseOut = null!;
         private CheckBox    _chkNes       = null!;
         private Button      _btnBuild     = null!;
+        private Button      _btnGenHeader = null!;
         private Label       _lblStatus    = null!;
         private Label       _lblSpace     = null!;
         private Panel       _pnlBar       = null!;
@@ -230,6 +231,22 @@ namespace VT03Builder.Forms
 
             sy += 34;
             right.Controls.Add(SectionLabel("NES HEADER", new Point(10, sy)));
+            _btnGenHeader = new Button
+            {
+                Text      = "Generate Header",
+                Location  = new Point(140, sy - 2),
+                Width     = 130,
+                Height    = 20,
+                BackColor = C_CTRL,
+                ForeColor = C_ACCENT,
+                FlatStyle = FlatStyle.Flat,
+                Font      = new Font("Consolas", 8f),
+                Cursor    = Cursors.Hand
+            };
+            _btnGenHeader.FlatAppearance.BorderColor = C_ACCENT;
+            _btnGenHeader.FlatAppearance.BorderSize  = 1;
+            _btnGenHeader.Click += OnGenerateHeader;
+            right.Controls.Add(_btnGenHeader);
             sy += 20;
 
             // ── Mapper label + dropdown ───────────────────────────────────────
@@ -474,6 +491,23 @@ namespace VT03Builder.Forms
             (_games[i], _games[i + 1]) = (_games[i + 1], _games[i]);
             RefreshList();
             _lstGames.Items[i + 1].Selected = true;
+        }
+
+
+        private void OnGenerateHeader(object? s, EventArgs e)
+        {
+            var item      = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
+            int submapper = item?.Number ?? 0;
+            string? chipStr = _cmbChip.SelectedItem as string;
+
+            if (string.IsNullOrWhiteSpace(chipStr))
+                chipStr = "8 MB";
+
+            int chipMb = int.TryParse(chipStr.Split(' ')[0], out var val) ? val : 8;
+
+            string desc = Mapper256Builder.DescribeHeader(submapper, chipMb);
+            foreach (string line in desc.Split('\n'))
+                Log(line.TrimEnd(), C_ACCENT);
         }
 
         private void OnBrowseOut(object? s, EventArgs e)

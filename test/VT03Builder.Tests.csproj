@@ -5,8 +5,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- Disable auto-include of ALL .cs in this folder.
-         We will list exactly what we want compiled. -->
+    <!-- No auto-include — we list every file explicitly below -->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
@@ -20,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Main project source files (one level up) -->
+    <!-- Main project source files (one level up, in the root) -->
     <Compile Include="..\BuildConfig.cs"     />
     <Compile Include="..\NesRom.cs"          />
     <Compile Include="..\RomBuilder.cs"      />
@@ -33,4 +32,5 @@
     <Compile Include="Mmc3PrgBankTests.cs"    />
     <Compile Include="ReferenceGameTests.cs"  />
   </ItemGroup>
+
 </Project>

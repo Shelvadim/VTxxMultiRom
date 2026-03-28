@@ -28,11 +28,13 @@ namespace VT03Builder.Tests
             cfg.Games.Add(TestHelper.Nrom(32, 8));
             var result = RomBuilder.Build(cfg, kernel);
 
-            // First 4 bytes (our magic tag) must survive
-            Assert.Equal(kernel[0], result.NorBinary[0]);
-            Assert.Equal(kernel[1], result.NorBinary[1]);
-            Assert.Equal(kernel[2], result.NorBinary[2]);
-            Assert.Equal(kernel[3], result.NorBinary[3]);
+            // Games are now packed into kernel gaps starting at 0x000000, so byte 0
+            // will be game data.  Check the CPU code region (0x07E000+) which no game
+            // ever touches — FakeKernel fills it with 0xAB.
+            Assert.Equal(kernel[0x07E000], result.NorBinary[0x07E000]);
+            Assert.Equal(kernel[0x07E001], result.NorBinary[0x07E001]);
+            Assert.Equal(kernel[0x07E002], result.NorBinary[0x07E002]);
+            Assert.Equal(kernel[0x07E003], result.NorBinary[0x07E003]);
         }
 
         [Fact]
