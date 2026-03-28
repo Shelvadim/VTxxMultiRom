@@ -24,6 +24,7 @@ namespace VT03Builder.Forms
         private TextBox     _txtOutput    = null!;
         private Button      _btnBrowseOut = null!;
         private CheckBox    _chkNes       = null!;
+        private CheckBox    _chkChrRam    = null!;
         private Button      _btnBuild     = null!;
         private Button      _btnGenHeader = null!;
         private Label       _lblStatus    = null!;
@@ -202,7 +203,7 @@ namespace VT03Builder.Forms
             {
                 " 2 MB  (16 Mbit)",
                 " 4 MB  (32 Mbit)",
-                " 8 MB  (64 Mbit)  ← recommended",
+                " 8 MB  (64 Mbit)",
                 "16 MB (128 Mbit)",
                 "32 MB (256 Mbit)"
             });
@@ -285,7 +286,7 @@ namespace VT03Builder.Forms
             sy += 34;
             _chkNes = new CheckBox
             {
-                Text      = "Also generate test files (.nes for Mesen  /  .unf for NintendulatorNRS)",
+                Text      = "Also generate test files (.nes for FCEUX  /  .unf for NintendulatorNRS)",
                 Location  = new Point(10, sy),
                 AutoSize  = true,
                 ForeColor = C_YELLOW,
@@ -296,7 +297,22 @@ namespace VT03Builder.Forms
             };
             right.Controls.Add(_chkNes);
 
-            sy += 30;
+            sy += 24;
+            _chkChrRam = new CheckBox
+            {
+                Text      = "Include games using CHR-RAM (for consoles with CHR-RAM hardware)",
+                Location  = new Point(10, sy),
+                AutoSize  = true,
+                ForeColor = C_DIM,
+                BackColor = Color.Transparent,
+                Font      = new Font("Consolas", 8.5f),
+                Checked   = false,
+                Cursor    = Cursors.Hand
+            };
+            _chkChrRam.CheckedChanged += (s, e) => { RefreshList(); UpdateSpace(); };
+            right.Controls.Add(_chkChrRam);
+
+            sy += 54;
             _btnBuild = new Button
             {
                 Text      = "⚡  BUILD FLASH IMAGE",
@@ -437,14 +453,22 @@ namespace VT03Builder.Forms
                 string? compatWarn = rom.Vt03CompatWarning;
                 if (compatWarn != null)
                 {
-                    // CHR-RAM MMC3 games will grey screen — block them
+                    // CHR-RAM MMC3 games will grey screen unless the console has CHR-RAM hardware
                     if (rom.HasChrRam)
                     {
-                        Log($"✗ {rom.FileName}  [{rom.MapperDescription}]  ⚠ {compatWarn}", C_RED);
-                        bad++; continue;
+                        bool allowChrRam = _chkChrRam?.Checked ?? false;
+                        if (!allowChrRam)
+                        {
+                            Log($"✗ {rom.FileName}  [{rom.MapperDescription}]  ⚠ {compatWarn}  (enable 'Include CHR-RAM games' to add)", C_RED);
+                            bad++; continue;
+                        }
+                        Log($"⚠ {rom.FileName}  [{rom.MapperDescription}]  CHR-RAM — included (ensure your console has CHR-RAM)", C_YELLOW);
                     }
-                    // Large PRG — warn but allow
-                    Log($"⚠ {rom.FileName}  [{rom.MapperDescription}]  PRG:{rom.PrgSize / 1024}KB  CHR:{rom.ChrSize / 1024}KB  — {compatWarn}", C_YELLOW);
+                    else
+                    {
+                        // Large PRG — warn but allow
+                        Log($"⚠ {rom.FileName}  [{rom.MapperDescription}]  PRG:{rom.PrgSize / 1024}KB  CHR:{rom.ChrSize / 1024}KB  — {compatWarn}", C_YELLOW);
+                    }
                 }
                 else
                 {
@@ -499,10 +523,8 @@ namespace VT03Builder.Forms
             var item      = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
             int submapper = item?.Number ?? 0;
             string? chipStr = _cmbChip.SelectedItem as string;
-
             if (string.IsNullOrWhiteSpace(chipStr))
                 chipStr = "8 MB";
-
             int chipMb = int.TryParse(chipStr.Split(' ')[0], out var val) ? val : 8;
 
             string desc = Mapper256Builder.DescribeHeader(submapper, chipMb);
@@ -565,10 +587,10 @@ namespace VT03Builder.Forms
 
                 if (cfg.GenerateNes)
                 {
-                    // .nes for Mesen (mapper 256 — NROM/CNROM works; MMC3 needs Mesen not FCEUX)
+                    // .nes for FCEUX (mapper 256 — NROM/CNROM works; use NintendulatorNRS for MMC3)
                     string nesPath = Path.ChangeExtension(binPath, ".nes");
                     File.WriteAllBytes(nesPath, result.NesFile);
-                    Log($"NES: {nesPath}  (Mesen — mapper 256)", null);
+                    Log($"NES: {nesPath}  (FCEUX — mapper 256)", null);
 
                     // .unf for NintendulatorNRS (UNL-OneBus UNIF format)
                     string unfPath = Path.ChangeExtension(binPath, ".unf");
@@ -602,10 +624,9 @@ namespace VT03Builder.Forms
                           $"Size: {sz / 1024} KB  ({result?.GameCount ?? 0} games)";
             if (cfg.GenerateNes)
                 info += $"\n\nTest files:\n" +
-                        $"  .nes → Mesen (mapper 256)\n" +
-                        $"         NROM/CNROM: works in FCEUX too\n" +
-                        $"         MMC3: Mesen only (FCEUX doesn't emulate MMC3 mode)\n" +
-                        $"  .unf → NintendulatorNRS (UNL-OneBus UNIF format)";
+                        $"  .nes → FCEUX (mapper 256, NROM/CNROM)\n" +
+                        $"  .unf → NintendulatorNRS (UNL-OneBus, all mappers)\n" +
+                        $"  Note: for MMC3 games use NintendulatorNRS (.unf)";
             info += "\n\nFlash the .bin to your NOR chip using the T48 / Xgpro.";
 
             MessageBox.Show(info, "Build Complete",
@@ -635,6 +656,7 @@ namespace VT03Builder.Forms
             Games        = new List<NesRom>(_games),
             OutputPath   = _txtOutput?.Text.Trim() ?? string.Empty,
             GenerateNes  = _chkNes?.Checked ?? true,
+            AllowChrRam  = _chkChrRam?.Checked ?? false,
             Mapper       = 256,   // only one mapper for now
             Submapper    = (_cmbSubmapper?.SelectedItem as ComboBoxSubmapperItem)?.Number ?? 0,
             ChipSizeMb   = _cmbChip?.SelectedIndex switch
@@ -664,7 +686,12 @@ namespace VT03Builder.Forms
                 string status;
                 Color rowColor;
                 if (!g.IsValid)                     { status = "✗ Bad";     rowColor = C_RED; }
-                else if (g.HasChrRam && g.Mapper==4){ status = "✗ CHR-RAM"; rowColor = C_RED; }
+                else if (g.HasChrRam && g.Mapper==4)
+                {
+                    bool allowChrRam = _chkChrRam?.Checked ?? false;
+                    status   = allowChrRam ? "⚠ CHR-RAM" : "✗ CHR-RAM";
+                    rowColor = allowChrRam ? C_YELLOW    : C_RED;
+                }
                 else if (g.Vt03CompatWarning != null){ status = "⚠ IRQ?";   rowColor = C_YELLOW; }
                 else if (!g.IsSupportedByVT03)      { status = "⚠ Mapper";  rowColor = C_YELLOW; }
                 else                                { status = "OK";         rowColor = C_TEXT; }

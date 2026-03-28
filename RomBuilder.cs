@@ -70,7 +70,9 @@ namespace VT03Builder.Services
             Array.Copy(kernelData, rom, kernelData.Length);
 
             var nromGames = cfg.Games.Where(g => g.Mapper == 0 || g.Mapper == 3).ToList();
-            var mmc3Games = cfg.Games.Where(g => g.Mapper == 4).ToList();
+            var mmc3Games = cfg.Games.Where(g => g.Mapper == 4)
+                                     .Where(g => !g.HasChrRam || cfg.AllowChrRam)
+                                     .ToList();
 
             var names   = new List<string>();
             var configs = new List<byte[]>();

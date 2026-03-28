@@ -19,13 +19,8 @@ namespace VT03Builder.Services
 
     public static class SpaceCalculator
     {
-        // Kernel gap regions available for NROM games (480 KB total)
-        private static readonly (int Start, int End)[] KernelFreeRegions =
-        {
-            (0x000000, 0x040000),  // 256 KB
-            (0x041000, 0x079000),  // 224 KB
-        };
-        private const long KernelFreeTotal = (0x040000 - 0x000000) + (0x079000 - 0x041000);  // 480 KB
+        // Kernel free regions available for NROM games (480 KB total)
+        private const long KernelFreeTotal = (0x040000 - 0x000000) + (0x079000 - 0x041000);
         private const long NromOverflow    = 0x200000 - 0x080000;  // 1.5 MB after kernel
         private const long Mmc3Start       = 0x200000;
 
@@ -37,9 +32,11 @@ namespace VT03Builder.Services
             foreach (var g in cfg.Games)
             {
                 if (!g.IsValid) continue;
+                // CHR-RAM games are excluded unless explicitly allowed
+                if (g.HasChrRam && g.Mapper == 4 && !cfg.AllowChrRam) continue;
                 int effPrg   = g.Mapper == 4 ? RomBuilder.EffectivePrgForChr(g.PrgSize, g.ChrSize) : g.PrgSize;
                 int gameSize = effPrg + g.ChrSize;
-                int align    = g.Mapper != 4 ? RomBuilder.PrgAlignFor(g.PrgSize) : RomBuilder.PrgAlignFor(g.PrgSize);
+                int align    = RomBuilder.PrgAlignFor(g.PrgSize);
                 long aligned = ((gameSize + align - 1) / align) * align;
                 if (g.Mapper == 4)
                     usedMmc3 += aligned;
@@ -49,8 +46,9 @@ namespace VT03Builder.Services
 
             // NROM usable = kernel gaps (480 KB) + overflow region (1.5 MB)
             long nromUsable = KernelFreeTotal + NromOverflow;
-            // MMC3 usable = unbounded (MMC3 always at 0x200000+, no chip size limit)
-            long mmc3Usable = 8L * 1024 * 1024 - Mmc3Start;  // up to 8 MB chip max
+            // MMC3 usable = chip size minus 2 MB (kernel window + NROM area)
+            long chipBytes  = (long)cfg.ChipSizeMb * 1024L * 1024L;
+            long mmc3Usable = Math.Max(0L, chipBytes - Mmc3Start);
 
             return new SpaceInfo
             {

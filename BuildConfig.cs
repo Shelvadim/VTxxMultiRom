@@ -5,7 +5,8 @@ namespace VT03Builder.Models
     public class BuildConfig
     {
         /// <summary>NOR chip size in megabytes (e.g. 8 = 8 MB = 64 Mbit).</summary>
-        public int          ChipSizeMb  { get; set; } = 8;
+        public int          ChipSizeMb   { get; set; } = 8;
+        public bool         AllowChrRam  { get; set; } = false;
         public string       OutputPath  { get; set; } = "multicart";
         public bool         GenerateNes { get; set; } = true;
         public List<NesRom> Games       { get; set; } = new List<NesRom>();
