@@ -529,11 +529,21 @@ namespace VT03Builder.Services
                 int prg16k = (chipMb * 1024 * 1024) / (16 * 1024);
                 byte[] hdr = MakeNes2Header(prg16k, submapper);
 
+                // Decode fields for display
+                int mapperNum = ((hdr[6] >> 4) & 0xF)
+                              | ((hdr[7] & 0xF0))
+                              | (((hdr[8] & 0x0F)) << 8);
+                int smNum     = (hdr[8] >> 4) & 0x0F;
+                // NES 2.0 PRG size: 12-bit value = byte[9] bits 3-0 (high) | byte[4] (low)
+                int prg12bit  = ((hdr[9] & 0x0F) << 8) | hdr[4];
+                // CHR: byte[5] (low) | byte[9] bits 7-4 (high)
+                int chr12bit  = ((hdr[9] >> 4) << 8) | hdr[5];
+
                 var sb = new StringBuilder();
                 sb.AppendLine("── NES 2.0 Header (Mapper 256 / OneBus / VT03) ─────────────────────");
                 sb.AppendLine();
 
-                // Hex dump
+                // Hex dump — split at byte 8 for readability
                 sb.Append("  Hex:  ");
                 for (int i = 0; i < 16; i++)
                 {
@@ -545,21 +555,23 @@ namespace VT03Builder.Services
                 sb.AppendLine();
 
                 // Field breakdown
-                sb.AppendLine($"  [0-3]  Magic     : {(char)hdr[0]}{(char)hdr[1]}{(char)hdr[2]} 1A");
-                sb.AppendLine($"  [4]    PRG size  : {hdr[4]:X2}h  ({prg16k} × 16KB = {chipMb} MB)");
-                sb.AppendLine($"  [5]    CHR size  : 00h  (no CHR-ROM in header — all in PRG flash)");
-                sb.AppendLine($"  [6]    Flags6    : {hdr[6]:X2}h  mapper bits 3-0 = {hdr[6] >> 4:X1}");
-                sb.AppendLine($"  [7]    Flags7    : {hdr[7]:X2}h  mapper bits 7-4 = {(hdr[7] >> 4) & 0xF:X1},  NES2 id = {(hdr[7] >> 2) & 3:X1}");
-                sb.AppendLine($"  [8]    Mapper hi : {hdr[8]:X2}h  submapper = {(hdr[8] >> 4) & 0xF},  mapper bits 11-8 = {hdr[8] & 0xF:X1}");
-                sb.AppendLine($"  [9]    PRG hi    : {hdr[9]:X2}h  PRG size MSB");
-                sb.AppendLine($"  [10-15] Unused   : 00 00 00 00 00 00");
+                sb.AppendLine($"  [0-3]  Magic       : {(char)hdr[0]}{(char)hdr[1]}{(char)hdr[2]} 1A");
+                sb.AppendLine($"  [4]    PRG ROM lo  : {hdr[4]:X2}h  ┐ combined 12-bit PRG size:");
+                sb.AppendLine($"  [9]    PRG ROM hi  : {hdr[9]:X2}h  ┘ = 0x{prg12bit:X3} = {prg12bit} × 16KB = {chipMb} MB");
+                sb.AppendLine($"  [5]    CHR ROM     : {hdr[5]:X2}h  = 0 banks (CHR is banked from PRG flash)");
+                sb.AppendLine($"                       Note: emulators may show '8KB CHR-RAM' — this is");
+                sb.AppendLine($"                       normal; OneBus hardware ignores CHR-RAM and uses");
+                sb.AppendLine($"                       flash-based CHR banking via $2018/$201A registers.");
+                sb.AppendLine($"  [6]    Flags 6     : {hdr[6]:X2}h  mapper bits 3-0 = {(hdr[6] >> 4) & 0xF:X1}");
+                sb.AppendLine($"  [7]    Flags 7     : {hdr[7]:X2}h  mapper bits 7-4 = {(hdr[7] >> 4) & 0xF:X1},  NES 2.0 id = 2");
+                sb.AppendLine($"  [8]    Mapper/Sub  : {hdr[8]:X2}h  mapper bits 11-8 = {hdr[8] & 0xF:X1},  submapper = {smNum}");
+                sb.AppendLine($"  [10-15] Unused     : 00 00 00 00 00 00");
                 sb.AppendLine();
 
-                // Summary
-                int mapperNum = ((hdr[6] >> 4) & 0xF) | ((hdr[7] & 0xF0)) | (((hdr[8] & 0x0F)) << 8);
-                int smNum     = (hdr[8] >> 4) & 0x0F;
-                sb.AppendLine($"  Mapper: {mapperNum}  Submapper: {smNum}  PRG: {chipMb} MB");
-                sb.Append(    $"  Output: {chipMb * 1024 * 1024 / 1024} KB flash image");
+                sb.AppendLine($"  Mapper: {mapperNum}  Submapper: {smNum}");
+                sb.AppendLine($"  PRG:    {prg12bit} × 16KB = {chipMb} MB");
+                sb.AppendLine($"  CHR:    0 (all CHR banked through PRG flash on OneBus hardware)");
+                sb.Append(    $"  Flash:  {chipMb * 1024} KB output image");
 
                 return sb.ToString();
             }
