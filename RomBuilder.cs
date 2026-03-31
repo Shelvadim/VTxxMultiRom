@@ -38,8 +38,8 @@ namespace VT03Builder.Services
         private const int MenuHeaderEnd   = 0x079010;
         private const int ConfigTableAddr = 0x07C000;
         private const int KernelEnd       = 0x080000;   // kernel spans 0x000000–0x07FFFF
-        private const int Mmc3Start       = 0x200000;   // MMC3 starts here on chips > 2 MB
-        private const int WindowSize      = 0x200000;   // 2 MB PRG window boundary
+        private const int NromEnd         = 0x200000;   // NROM/MMC3 shared window end (PA=0)
+        private const int WindowSize      = 0x200000;   // 2 MB window boundary
 
         // Free regions inside the kernel that NROM/CNROM games can safely use.
         private static readonly (int Start, int End)[] KernelFreeRegions =
@@ -79,7 +79,8 @@ namespace VT03Builder.Services
 
             // On a 2 MB chip the single 2 MB window is shared by NROM and MMC3.
             bool sharedWindow = romSize <= WindowSize;
-            int  nromLimit    = sharedWindow ? romSize : Mmc3Start;
+            // NROM and MMC3 share 0x080000-0x1FFFFF (PA=0). Cap at romSize for 2MB chips.
+            int  nromLimit    = Math.Min(romSize, NromEnd);
 
             // ── NROM / CNROM — free-list packer ──────────────────────────────
             // Priority 1: kernel free gaps (480 KB)
@@ -132,13 +133,14 @@ namespace VT03Builder.Services
             }
 
             // ── MMC3 ─────────────────────────────────────────────────────────
-            // On 2 MB chip: start right after NROM (or at KernelEnd if all fit in gaps).
-            // On larger chips: always at Mmc3Start = 0x200000.
-            int mmc3Floor = sharedWindow ? Math.Max(KernelEnd, nromHighWater) : Mmc3Start;
+            // MMC3 games always packed in the first 2MB window (PA=0), right after NROM.
+            // PA=0 is required for correct emulation in NintendulatorNRS (UNL-OneBus).
+            // Real hardware also works with PA=0 for games fitting in the first 2MB.
+            int mmc3Floor = Math.Max(KernelEnd, nromHighWater);
             int curMmc3   = mmc3Floor;
 
-            if (sharedWindow && mmc3Games.Count > 0)
-                log?.Report("NOTE  2 MB chip — MMC3 games packed after NROM in the same window");
+            if (mmc3Games.Count > 0)
+                log?.Report($"NOTE  MMC3 games start at 0x{mmc3Floor:X6}");
 
             foreach (var game in mmc3Games)
             {
@@ -156,7 +158,7 @@ namespace VT03Builder.Services
 
                 if (curMmc3 + physSize > romSize)
                 {
-                    log?.Report($"SKIP  {game.FileName}: no MMC3 space left");
+                    log?.Report($"SKIP  {game.FileName}: no MMC3 space left (chip full)");
                     continue;
                 }
 
@@ -177,16 +179,41 @@ namespace VT03Builder.Services
             for (int i = 0; i < configs.Count; i++)
                 Array.Copy(configs[i], 0, rom, ConfigTableAddr + i * 9, 9);
 
+            // Write LCD init stub at NOR 0x06E000 if requested
+            if (cfg.InitLcd)
+                WriteLcdStub(rom);
+
+            // NOTE: Submappers 11-15 use hardware CPU opcode bit-swapping.
+            // We do NOT scramble the ROM here. The hardware only scrambles opcode
+            // fetches, not data reads — so post-processing the entire ROM is wrong.
+            // The submapper value is written to the NES 2.0 header for emulator use.
+            // ROMs intended for these consoles must have been built with scrambling
+            // already applied selectively to opcode positions by the original toolchain.
+            if (cfg.Submapper >= 11 && cfg.Submapper <= 15)
+                log?.Report($"NOTE  Submapper {cfg.Submapper}: hardware opcode bit-swap — " +
+                             "ensure your ROMs were built for this console type.");
+
             int mmc3Used = Math.Max(0, curMmc3 - mmc3Floor);
             log?.Report($"Done  {names.Count} games  |  chip {cfg.ChipSizeMb} MB  |  " +
                         $"NROM overflow {Math.Max(0, nromHighWater - KernelEnd) / 1024} KB  |  " +
                         $"MMC3 {mmc3Used / 1024} KB");
 
+            // Generate test files from UNSWAPPED rom (emulators run on normal hardware).
+            byte[] nesFile  = Mapper256Builder.MakeNes2Rom(rom, cfg.Submapper);
+            byte[] unifFile = Mapper256Builder.MakeUnifRom(rom);
+
+            // Apply physical pin swap to .bin ONLY — AFTER generating .nes/.unf.
+            if (cfg.PinSwap == 1)
+            {
+                ApplyPinSwap(rom);
+                log?.Report("NOTE  Pin swap D1\u2194D9, D2\u2194D10 applied to .bin");
+            }
+
             return new BuildResult
             {
                 NorBinary = rom,
-                NesFile   = Mapper256Builder.MakeNes2Rom(rom, cfg.Submapper),
-                UnifFile  = Mapper256Builder.MakeUnifRom(rom),
+                NesFile   = nesFile,
+                UnifFile  = unifFile,
                 GameCount = names.Count,
                 NromUsed  = Math.Max(0, nromHighWater - KernelEnd),
                 Mmc3Used  = mmc3Used,
@@ -206,13 +233,104 @@ namespace VT03Builder.Services
         // ── How much space is available for games ─────────────────────────────
         public static long UsableBytes(int chipSizeMb)
         {
-            long kernelFree   = KernelFreeRegions.Sum(r => (long)(r.End - r.Start)); // 480 KB
-            long nromOverflow = Mmc3Start - KernelEnd;    // 1.5 MB
-            long mmc3Space    = Math.Max(0L, (long)chipSizeMb * 1024L * 1024L - Mmc3Start);
-            return kernelFree + nromOverflow + mmc3Space;
+            long kernelFree  = KernelFreeRegions.Sum(r => (long)(r.End - r.Start)); // 480 KB
+            long chipBytes   = (long)chipSizeMb * 1024L * 1024L;
+            // All space after kernel (NROM gaps + overflow + MMC3 across all windows)
+            long afterKernel = Math.Max(0L, chipBytes - KernelEnd);
+            return kernelFree + afterKernel;
         }
 
-        // ── Game list ─────────────────────────────────────────────────────────
+        // ── LCD init stub ─────────────────────────────────────────────────────
+        //
+        // For SUP 400-in-1 and similar VT03 handhelds that have their own hardware
+        // startup code (TFT init etc.) in NOR 0x60000-0x6DFFF but need a bridge
+        // at NOR 0x06E000 (where their original menu lived) that:
+        //   1. Completes CHR banking setup ($2018/$201A/$2012-$2015)
+        //   2. Enables backlight — both Type 1/2 ($412C=$0F) and
+        //                          Type 3 ($413F=$1F, $4138=$0B, $4139=$0F)
+        //   3. Copies a 33-byte bank-switch stub to CPU RAM $0400
+        //   4. Jumps to RAM stub, which configures PRG banking and
+        //      executes JMP($FFFC) → our RESET vector at CPU $E000 = NOR 0x07E000
+        //
+        // The console's own startup code (TFT init) is assumed to be in
+        // NOR 0x60000-0x6DFFF, which we leave as 0xFF (the user must flash
+        // their original kernel's startup block there separately if needed).
+        //
+        // CPU mapping assumed when stub runs (after their HW init):
+        //   $8000-$9FFF = NOR 0x06E000  ($4107 = 0x37 → bank 0x37)
+        //   so stub runs with CPU base $8000 = NOR 0x06E000
+        private const int LcdStubAddr = 0x06E000;
+
+        private static void WriteLcdStub(byte[] rom)
+        {
+            // Assembled stub — see comments in assemble_stub() for full decode.
+            // CPU $8000 = NOR 0x06E000 when this runs.
+            byte[] stub = new byte[]
+            {
+                // ── CHR banking ──────────────────────────────────────────────
+                0xA9, 0x20, 0x8D, 0x18, 0x20,  // LDA #$20,  STA $2018  IntermBank=2→NOR 0x080000
+                0xA9, 0x00, 0x8D, 0x1A, 0x20,  // LDA #$00,  STA $201A  VB0S=0
+                0xA9, 0x00, 0x8D, 0x16, 0x20,  // LDA #$00,  STA $2016
+                0xA9, 0x02, 0x8D, 0x17, 0x20,  // LDA #$02,  STA $2017
+                0xA0, 0x04, 0x8C, 0x12, 0x20,  // LDY #$04,  STY $2012
+                0xC8,       0x8C, 0x13, 0x20,  // INY,       STY $2013
+                0xC8,       0x8C, 0x14, 0x20,  // INY,       STY $2014
+                0xC8,       0x8C, 0x15, 0x20,  // INY,       STY $2015
+                // ── Backlight: Type 3 (newer consoles) ───────────────────────
+                0xA9, 0x1F, 0x8D, 0x3F, 0x41,  // LDA #$1F,  STA $413F
+                0xA9, 0x0B, 0x8D, 0x38, 0x41,  // LDA #$0B,  STA $4138
+                0xA9, 0x0F, 0x8D, 0x39, 0x41,  // LDA #$0F,  STA $4139
+                // ── Backlight: Type 1/2 (older consoles) ─────────────────────
+                0xA9, 0x0F, 0x8D, 0x2C, 0x41,  // LDA #$0F,  STA $412C
+                // ── Copy RAM stub (33 bytes at $8047) to $0400 ───────────────
+                0xA2, 0x20,                     // LDX #$20  (32, 0-based → copies 33 bytes)
+                0xBD, 0x47, 0x80,               // LDA $8047,X  [loop]
+                0x9D, 0x00, 0x04,               // STA $0400,X
+                0xCA,                           // DEX
+                0x10, 0xF9,                     // BPL loop (-7)
+                0x4C, 0x00, 0x04,               // JMP $0400
+                // ── RAM stub at $8047 (copied to $0400, runs from RAM) ────────
+                // $410A FIRST (Middle bank), $410B LAST (PS mode, changes formula)
+                0xA9, 0x3C, 0x8D, 0x0A, 0x41,  // LDA #$3C,  STA $410A  Middle bank
+                0xA9, 0x00, 0x8D, 0x0B, 0x41,  // LDA #$00,  STA $410B  PS=0
+                0xA9, 0x00, 0x8D, 0x00, 0x41,  // LDA #$00,  STA $4100  PA=0,VA=0
+                0xA9, 0x3C, 0x8D, 0x07, 0x41,  // LDA #$3C,  STA $4107  $8000→NOR 0x078000
+                0xA9, 0x3D, 0x8D, 0x08, 0x41,  // LDA #$3D,  STA $4108  $A000→NOR 0x07A000
+                0xA9, 0x00, 0x8D, 0x09, 0x41,  // LDA #$00,  STA $4109
+                0x6C, 0xFC, 0xFF,               // JMP ($FFFC) → our RESET vector at CPU $E000
+            };
+
+            if (LcdStubAddr + stub.Length > rom.Length)
+                return;   // shouldn't happen for any supported chip size
+
+            Array.Copy(stub, 0, rom, LcdStubAddr, stub.Length);
+        }
+        // ── Pin swap (D1↔D9, D2↔D10) ─────────────────────────────────────────
+        private static bool GetBit(byte b, int bit) => ((b >> bit) & 0x01) == 1;
+        private static void SetBit(ref byte b, int bit, bool value)
+            => b = (byte)(value ? b | (1 << bit) : b & ~(1 << bit));
+
+        /// <summary>
+        /// Swap bits 1 and 2 between each adjacent even/odd byte pair in the .bin.
+        /// Compensates for boards where D1↔D9 and D2↔D10 are physically crossed.
+        /// Applied AFTER generating .nes/.unf (those files need unswapped data).
+        /// </summary>
+        public static void ApplyPinSwap(byte[] data)
+        {
+            for (int i = 0; i < data.Length / 2; i++)
+            {
+                byte b1 = data[i * 2];
+                byte b2 = data[i * 2 + 1];
+                byte tmp = b1;
+                SetBit(ref b1, 1, GetBit(b2, 1));
+                SetBit(ref b1, 2, GetBit(b2, 2));
+                SetBit(ref b2, 1, GetBit(tmp, 1));
+                SetBit(ref b2, 2, GetBit(tmp, 2));
+                data[i * 2]     = b1;
+                data[i * 2 + 1] = b2;
+            }
+        }
+
         private static void WriteGameList(byte[] rom, List<string> names)
         {
             byte[] area = new byte[MenuEnd - MenuStart + 1];
@@ -439,7 +557,8 @@ namespace VT03Builder.Services
             /// <summary>
             /// Apply submapper-specific fixups to a 9-byte MMC3 config.
             ///   Submapper 2 (Power Joy Supermax): swap PQ0/PQ1 bytes (4 and 5).
-            ///   All other submappers: no change.
+            ///   Submappers 11-15: register addresses are standard — no config change.
+            ///   Opcode byte pre-scrambling is applied separately via ScrambleGameArea().
             /// </summary>
             public static void ApplySubmapperToMmc3Config(byte[] cfg, int submapper)
             {
@@ -447,14 +566,112 @@ namespace VT03Builder.Services
                     (cfg[4], cfg[5]) = (cfg[5], cfg[4]);
             }
 
+            // ── Submapper 11-15: CPU opcode bit-swap pre-scrambling ───────────────
+            //
+            // Consoles with submappers 11-15 have hardware that swaps specific bits
+            // of every byte fetched as a CPU opcode from flash.  The games on these
+            // consoles were compiled with the swap already factored in.
+            //
+            // When building a multicart with standard NES game ROMs for these consoles,
+            // we must pre-swap those same bits in every byte of the game data so that
+            // after the hardware applies its swap the CPU sees the original correct byte.
+            //
+            // Swap definitions (NESdev wiki, Mapper 256 submapper table):
+            //   11 Vibes:     D7↔D6, D2↔D1 (via $411C.6) + D5↔D4 (via $411C.1)
+            //   12 Cheertone: D7↔D6, D2↔D1 (via $411C.6)
+            //   13 Cube Tech: D4↔D1 (via $4169)
+            //   14 Karaoto:   D7↔D6 (via $411C)
+            //   15 Jungletac: D6↔D5 (via $4169)
+            //
+            // Bit-swapping is self-inverse: applying the same swap twice restores the
+            // original value.  So pre-scramble == the hardware's scramble.
+
+            /// <summary>Pre-scramble a single byte for the given submapper.</summary>
+            public static byte ScrambleByte(byte b, int submapper)
+            {
+                switch (submapper)
+                {
+                    case 11:
+                        // D7↔D6, D2↔D1, D5↔D4
+                        return (byte)(
+                            ((b & 0x80) >> 1) |   // D7 → bit6
+                            ((b & 0x40) << 1) |   // D6 → bit7
+                            ((b & 0x20) >> 1) |   // D5 → bit4
+                            ((b & 0x10) << 1) |   // D4 → bit5
+                            ((b & 0x08)     ) |   // D3 unchanged
+                            ((b & 0x04) >> 1) |   // D2 → bit1
+                            ((b & 0x02) << 1) |   // D1 → bit2
+                            ((b & 0x01)     )     // D0 unchanged
+                        );
+                    case 12:
+                        // D7↔D6, D2↔D1
+                        return (byte)(
+                            ((b & 0x80) >> 1) |   // D7 → bit6
+                            ((b & 0x40) << 1) |   // D6 → bit7
+                            ((b & 0x38)     ) |   // D5-D3 unchanged
+                            ((b & 0x04) >> 1) |   // D2 → bit1
+                            ((b & 0x02) << 1) |   // D1 → bit2
+                            ((b & 0x01)     )     // D0 unchanged
+                        );
+                    case 13:
+                        // D4↔D1
+                        return (byte)(
+                            ((b & 0xE0)     ) |   // D7-D5 unchanged
+                            ((b & 0x10) >> 3) |   // D4 → bit1
+                            ((b & 0x0C)     ) |   // D3,D2 unchanged
+                            ((b & 0x02) << 3) |   // D1 → bit4
+                            ((b & 0x01)     )     // D0 unchanged
+                        );
+                    case 14:
+                        // D7↔D6
+                        return (byte)(
+                            ((b & 0x80) >> 1) |   // D7 → bit6
+                            ((b & 0x40) << 1) |   // D6 → bit7
+                            ((b & 0x3F)     )     // D5-D0 unchanged
+                        );
+                    case 15:
+                        // D6↔D5
+                        return (byte)(
+                            ((b & 0x80)     ) |   // D7 unchanged
+                            ((b & 0x40) >> 1) |   // D6 → bit5
+                            ((b & 0x20) << 1) |   // D5 → bit6
+                            ((b & 0x1F)     )     // D4-D0 unchanged
+                        );
+                    default:
+                        return b;
+                }
+            }
+
+            /// <summary>
+            /// Pre-scramble all bytes in the ROM for submappers 11-15.
+            /// The entire ROM is scrambled because the hardware scrambles every opcode
+            /// fetch, and for a multicart all game data will be fetched as opcodes.
+            /// The kernel at 0x07E000 (our menu) is also scrambled so it runs correctly.
+            /// </summary>
+            public static void ScrambleRom(byte[] rom, int submapper)
+            {
+                if (submapper < 11 || submapper > 15) return;
+                for (int i = 0; i < rom.Length; i++)
+                    rom[i] = ScrambleByte(rom[i], submapper);
+            }
+
             // ── NES 2.0 file wrapper ──────────────────────────────────────────────
 
             public static byte[] MakeNes2Rom(byte[] prg, int submapper = 0)
             {
-                byte[] hdr    = MakeNes2Header(prg.Length / 16384, submapper);
-                byte[] result = new byte[16 + prg.Length];
+                // Only include the first 2MB window (PA=0) in the .nes test file.
+                // All games are placed in 0x000000-0x1FFFFF with PA=0 so the
+                // emulator's bank registers (PQ0-PQ3, 0x00-0xFF) map correctly
+                // within this 2MB block. Including the full chip (e.g. 8MB) causes
+                // NintendulatorNRS to use a different bank-address calculation
+                // that produces artefacts. The UNIF PRG0 chunk is also 2MB,
+                // which is why .unf works correctly.
+                const int NesWindow = 0x200000;   // 2 MB = 128 × 16KB banks
+                int nesSize = Math.Min(prg.Length, NesWindow);
+                byte[] hdr    = MakeNes2Header(nesSize / 16384, submapper);
+                byte[] result = new byte[16 + nesSize];
                 Array.Copy(hdr, result, 16);
-                Array.Copy(prg, 0, result, 16, prg.Length);
+                Array.Copy(prg, 0, result, 16, nesSize);
                 return result;
             }
 
@@ -572,6 +789,25 @@ namespace VT03Builder.Services
                 sb.AppendLine($"  PRG:    {prg12bit} × 16KB = {chipMb} MB");
                 sb.AppendLine($"  CHR:    0 (all CHR banked through PRG flash on OneBus hardware)");
                 sb.Append(    $"  Flash:  {chipMb * 1024} KB output image");
+
+                if (submapper >= 11 && submapper <= 15)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine();
+                    sb.AppendLine($"  ⚠ Submapper {submapper}: CPU opcode bit-swap active at power-on");
+                    string swapDesc = submapper switch {
+                        11 => "D7↔D6, D2↔D1 (via $411C.6) + D5↔D4 (via $411C.1)",
+                        12 => "D7↔D6, D2↔D1 (via $411C.6)",
+                        13 => "D4↔D1 (via $4169)",
+                        14 => "D7↔D6 (via $411C)",
+                        15 => "D6↔D5 (via $4169)",
+                        _  => ""
+                    };
+                    sb.AppendLine($"     Swap: {swapDesc}");
+                    sb.AppendLine($"     The hardware unscrambles only opcode fetches, NOT data reads.");
+                    sb.AppendLine($"     Standard NES ROMs cannot be adapted by post-processing.");
+                    sb.Append(   $"     Use ROMs compiled specifically for this console type.");
+                }
 
                 return sb.ToString();
             }

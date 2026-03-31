@@ -21,39 +21,30 @@ namespace VT03Builder.Services
     {
         // Kernel free regions available for NROM games (480 KB total)
         private const long KernelFreeTotal = (0x040000 - 0x000000) + (0x079000 - 0x041000);
-        private const long NromOverflow    = 0x200000 - 0x080000;  // 1.5 MB after kernel
-        private const long Mmc3Start       = 0x200000;
+        private const long KernelEnd       = 0x080000L;
 
         public static SpaceInfo Calculate(BuildConfig cfg)
         {
-            long usedNrom = 0;
-            long usedMmc3 = 0;
+            long usedBytes = 0;
 
             foreach (var g in cfg.Games)
             {
                 if (!g.IsValid) continue;
-                // CHR-RAM games are excluded unless explicitly allowed
                 if (g.HasChrRam && g.Mapper == 4 && !cfg.AllowChrRam) continue;
                 int effPrg   = g.Mapper == 4 ? RomBuilder.EffectivePrgForChr(g.PrgSize, g.ChrSize) : g.PrgSize;
                 int gameSize = effPrg + g.ChrSize;
                 int align    = RomBuilder.PrgAlignFor(g.PrgSize);
-                long aligned = ((gameSize + align - 1) / align) * align;
-                if (g.Mapper == 4)
-                    usedMmc3 += aligned;
-                else
-                    usedNrom += aligned;
+                usedBytes += ((long)(gameSize + align - 1) / align) * align;
             }
 
-            // NROM usable = kernel gaps (480 KB) + overflow region (1.5 MB)
-            long nromUsable = KernelFreeTotal + NromOverflow;
-            // MMC3 usable = chip size minus 2 MB (kernel window + NROM area)
-            long chipBytes  = (long)cfg.ChipSizeMb * 1024L * 1024L;
-            long mmc3Usable = Math.Max(0L, chipBytes - Mmc3Start);
+            // Usable = kernel free gaps (480 KB) + everything after kernel end
+            long chipBytes   = (long)cfg.ChipSizeMb * 1024L * 1024L;
+            long afterKernel = Math.Max(0L, chipBytes - KernelEnd);
 
             return new SpaceInfo
             {
-                UsableBytes = nromUsable + mmc3Usable,
-                UsedBytes   = usedNrom + usedMmc3,
+                UsableBytes = KernelFreeTotal + afterKernel,
+                UsedBytes   = usedBytes,
             };
         }
     }

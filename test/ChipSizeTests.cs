@@ -11,7 +11,7 @@ namespace VT03Builder.Tests
     /// Verifies correct behaviour across all supported chip sizes.
     ///
     ///   2 MB : MMC3 games are packed after NROM games in the single window (0x000000–0x1FFFFF)
-    ///   4 MB : NROM in 0x080000–0x1FFFFF, MMC3 starts at 0x200000
+    ///   All : NROM + MMC3 share 0x080000–0x1FFFFF (PA=0, NintendulatorNRS compatible)
     ///   8 MB : same, more MMC3 space
     ///  16 MB : same, even more
     /// </summary>
@@ -99,18 +99,31 @@ namespace VT03Builder.Tests
         // ── 4 MB chip ─────────────────────────────────────────────────────────
 
         [Fact]
-        public void Chip4MB_Mmc3_StartsAt_0x200000()
+        public void Chip4MB_Mmc3_StartsAfterNrom()
         {
+            // MMC3 games pack right after NROM in the first 2MB window (PA=0).
+            // This ensures NintendulatorNRS (UNL-OneBus) can correctly map the banks.
             var nrom = TestHelper.Nrom(32, 8);
             var mmc3 = TestHelper.Mmc3(128, 128);
             var result = TestHelper.Build(4, nrom, mmc3);
 
+            var cfgNrom = TestHelper.GetConfig(result.NorBinary, 0);
             var cfgMmc3 = TestHelper.GetConfig(result.NorBinary, 1);
-            int outer   = (cfgMmc3[0] >> 4) & 0x0F;
-            int b4      = cfgMmc3[4];
-            int start   = outer * 0x200000 + b4 * 8192;
 
-            Assert.Equal(0x200000, start);
+            int nromPA    = (cfgNrom[0] >> 4) & 0x0F;
+            int nromStart = nromPA * 0x200000 + cfgNrom[4] * 8192;
+
+            int mmc3PA    = (cfgMmc3[0] >> 4) & 0x0F;
+            int mmc3Start = mmc3PA * 0x200000 + cfgMmc3[4] * 8192;
+
+            // PA must be 0 (first 2MB window) for emulator compatibility
+            Assert.Equal(0, mmc3PA);
+            // MMC3 must be after NROM
+            Assert.True(mmc3Start > nromStart,
+                $"MMC3 (0x{mmc3Start:X6}) should come after NROM (0x{nromStart:X6})");
+            // MMC3 must be within first 2MB window
+            Assert.True(mmc3Start < 0x200000,
+                $"MMC3 (0x{mmc3Start:X6}) must be within first 2MB window (PA=0)");
         }
 
         [Fact]
@@ -142,17 +155,19 @@ namespace VT03Builder.Tests
         [InlineData(16)]
         public void LargeChip_ManyMmc3Games_AllPlaced(int chipMb)
         {
-            // How many 128KB+128KB games fit in (chipMb - 2) MB of MMC3 space?
-            int mmc3SpaceMb = chipMb - 2;
-            int gameSize    = (128 + 128) * 1024;
-            int maxGames    = (mmc3SpaceMb * 1024 * 1024) / gameSize;
-            // Use 80% to be safe (alignment overhead)
-            int target = (maxGames * 4) / 5;
+            // MMC3 games share 0x080000–0x1FFFFF (1.5MB, PA=0) with NROM overflow.
+            // One NROM game (32KB+8KB = 40KB aligned to 32KB = 2 slots) leaves ~1.44MB for MMC3.
+            // 128KB+128KB = 256KB per game → up to 5 games fit safely.
+            const int mmc3WindowBytes = 0x200000 - 0x080000;   // 1.5MB
+            const int nromReserve     = 64 * 1024;              // conservative NROM overhead
+            int gameSize = (128 + 128) * 1024;
+            int maxGames = (mmc3WindowBytes - nromReserve) / gameSize;
+            int target   = (maxGames * 4) / 5;  // 80% to account for alignment
 
             var games = Enumerable.Range(0, target)
                                   .Select(_ => TestHelper.Mmc3(128, 128))
                                   .ToList();
-            games.Insert(0, TestHelper.Nrom(32, 8));  // one NROM game to ensure ordering
+            games.Insert(0, TestHelper.Nrom(32, 8));
 
             var result = TestHelper.Build(chipMb, games.ToArray());
 

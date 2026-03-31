@@ -21,6 +21,7 @@ namespace VT03Builder.Forms
         private ComboBox    _cmbChip      = null!;
         private ComboBox    _cmbMapper    = null!;
         private ComboBox    _cmbSubmapper = null!;
+        private ComboBox    _cmbPinSwap   = null!;
         private TextBox     _txtOutput    = null!;
         private Button      _btnBrowseOut = null!;
         private CheckBox    _chkNes       = null!;
@@ -281,6 +282,7 @@ namespace VT03Builder.Forms
             foreach (var (num, name) in SubmapperItems)
                 _cmbSubmapper.Items.Add(new ComboBoxSubmapperItem(num, name));
             _cmbSubmapper.SelectedIndex = 0;   // default: 0 — Normal
+            _cmbSubmapper.SelectedIndexChanged += OnSubmapperChanged;
             right.Controls.Add(_cmbSubmapper);
 
             sy += 34;
@@ -312,7 +314,24 @@ namespace VT03Builder.Forms
             _chkChrRam.CheckedChanged += (s, e) => { RefreshList(); UpdateSpace(); };
             right.Controls.Add(_chkChrRam);
 
-            sy += 54;
+            sy += 28;
+            right.Controls.Add(Lbl("Swap pins:", new Point(10, sy + 2)));
+            _cmbPinSwap = new ComboBox
+            {
+                Location      = new Point(96, sy),
+                Width         = 280,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor     = C_CTRL,
+                ForeColor     = C_TEXT,
+                FlatStyle     = FlatStyle.Flat,
+                Font          = new Font("Consolas", 8.5f)
+            };
+            _cmbPinSwap.Items.Add("None");
+            _cmbPinSwap.Items.Add("D1↔D9, D2↔D10  (physical board swap)");
+            _cmbPinSwap.SelectedIndex = 0;
+            right.Controls.Add(_cmbPinSwap);
+
+            sy += 34;
             _btnBuild = new Button
             {
                 Text      = "⚡  BUILD FLASH IMAGE",
@@ -518,6 +537,19 @@ namespace VT03Builder.Forms
         }
 
 
+        private void OnSubmapperChanged(object? s, EventArgs e)
+        {
+            var item = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
+            int sm   = item?.Number ?? 0;
+            if (sm >= 11 && sm <= 15)
+            {
+                Log($"⚠ Submapper {sm}: This console uses hardware CPU opcode bit-swapping.", C_YELLOW);
+                Log( "  Standard NES ROMs will NOT work correctly on this hardware.", C_YELLOW);
+                Log( "  Only use ROMs that were originally compiled for this console type.", C_YELLOW);
+                Log( "  The submapper value is recorded in the NES 2.0 header for emulator use only.", C_DIM);
+            }
+        }
+
         private void OnGenerateHeader(object? s, EventArgs e)
         {
             var item      = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
@@ -657,6 +689,7 @@ namespace VT03Builder.Forms
             OutputPath   = _txtOutput?.Text.Trim() ?? string.Empty,
             GenerateNes  = _chkNes?.Checked ?? true,
             AllowChrRam  = _chkChrRam?.Checked ?? false,
+            PinSwap      = _cmbPinSwap?.SelectedIndex ?? 0,
             Mapper       = 256,   // only one mapper for now
             Submapper    = (_cmbSubmapper?.SelectedItem as ComboBoxSubmapperItem)?.Number ?? 0,
             ChipSizeMb   = _cmbChip?.SelectedIndex switch
