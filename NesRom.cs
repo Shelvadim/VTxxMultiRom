@@ -119,19 +119,19 @@ namespace VT03Builder.Models
             Mapper switch
             {
                 0 => "NROM",  1 => "MMC1",  2 => "UxROM",
-                3 => "CNROM", 4 => "MMC3",  _ => $"Mapper{Mapper}"
+                4 => "MMC3",  _ => $"Mapper{Mapper}"
             };
 
         public string MapperDescription => $"{MapperName} ({Mapper})";
 
-        // Mappers supported by this VT03 OneBus builder
-        public bool IsSupportedByVT03 => Mapper is 0 or 3 or 4;
+        // Mappers supported by this VTxx OneBus builder (mapper 256): NROM and MMC3 only.
+        public bool IsSupportedByVT03 => Mapper is 0 or 4;
 
         /// <summary>True if this game uses CHR-RAM instead of CHR-ROM.</summary>
         public bool HasChrRam => ChrRomBanks == 0;
 
         /// <summary>
-        /// VT03 OneBus MMC3 compatibility warning.
+        /// VTxx OneBus MMC3 compatibility warning.
         /// Returns null if OK, or a short warning string if likely to grey-screen.
         /// </summary>
         public string? Vt03CompatWarning
@@ -140,7 +140,7 @@ namespace VT03Builder.Models
             {
                 if (Mapper != 4) return null;
                 if (HasChrRam)
-                    return "CHR-RAM — will grey screen (VT03 MMC3 needs CHR-ROM)";
+                    return "CHR-RAM — will grey screen (VTxx OneBus MMC3 needs CHR-ROM)";
                 if (PrgSize > 256 * 1024)
                     return "PRG>256KB — may grey screen if game uses MMC3 IRQ";
                 return null;

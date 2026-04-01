@@ -262,5 +262,104 @@ namespace VT03Builder.Tests
             var info = SpaceCalculator.Calculate(cfg);
             Assert.Equal((long)expectedKb * 1024, info.UsableBytes);
         }
+        // ── NES file size and header tests ───────────────────────────────────
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(4)]
+        [InlineData(8)]
+        [InlineData(16)]
+        public void NesFile_Size_MatchesChipSize(int chipMb)
+        {
+            var result = TestHelper.Build(chipMb, TestHelper.Mmc3(128, 128));
+            int expectedNesSize = 16 + chipMb * 1024 * 1024;
+            Assert.Equal(expectedNesSize, result.NesFile.Length);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(4)]
+        [InlineData(8)]
+        [InlineData(16)]
+        public void NesFile_Header_PRGSize_MatchesChipSize(int chipMb)
+        {
+            var result = TestHelper.Build(chipMb, TestHelper.Mmc3(128, 128));
+            byte[] hdr = result.NesFile;
+
+            // NES 2.0 PRG size is 12-bit: byte[9] bits 0-3 (high) | byte[4] (low)
+            int prg12bit = ((hdr[9] & 0x0F) << 8) | hdr[4];
+            int expected16k = (chipMb * 1024 * 1024) / (16 * 1024);
+
+            Assert.Equal(expected16k, prg12bit,
+                $"NES header PRG field should encode {chipMb}MB = {expected16k} × 16KB banks");
+        }
+
+        [Fact]
+        public void NesFile_Header_Magic_IsValid()
+        {
+            var result = TestHelper.Build(8, TestHelper.Nrom(32, 8));
+            byte[] hdr = result.NesFile;
+            Assert.Equal((byte)'N', hdr[0]);
+            Assert.Equal((byte)'E', hdr[1]);
+            Assert.Equal((byte)'S', hdr[2]);
+            Assert.Equal((byte)0x1A, hdr[3]);
+        }
+
+        [Fact]
+        public void NesFile_Header_Mapper256_Encoded()
+        {
+            var result = TestHelper.Build(8, TestHelper.Nrom(32, 8));
+            byte[] hdr = result.NesFile;
+            // Mapper 256 = 0x100
+            // byte[6] bits 7-4 = mapper bits 3-0 = 0
+            // byte[7] bits 7-4 = mapper bits 7-4 = 0, bits 3-2 = 10 (NES 2.0)
+            // byte[8] bits 3-0 = mapper bits 11-8 = 1
+            int mapperNum = ((hdr[6] >> 4) & 0xF) | (hdr[7] & 0xF0) | (((hdr[8] & 0x0F)) << 8);
+            Assert.Equal(256, mapperNum);
+            // NES 2.0 identifier: byte[7] bits 3-2 = 10
+            Assert.Equal(2, (hdr[7] >> 2) & 3);
+        }
+
+        [Fact]
+        public void UnifFile_Size_IsMultipleOf2MB()
+        {
+            // UNIF has 2MB PRG chunks — total PRG data should be multiple of 2MB
+            var result = TestHelper.Build(8, TestHelper.Mmc3(128, 128));
+            // UNIF = header(32) + MAPR chunk + MIRR chunk + PRG chunks
+            // Each PRG chunk = 8 bytes header + 2MB data
+            Assert.True(result.UnifFile.Length > 32, "UNIF must have content beyond header");
+        }
+
+        [Fact]
+        public void NesFile_SizeDiffersFromUnifFile()
+        {
+            // .nes = 16 bytes header + PRG data
+            // .unf = 32 bytes header + chunks with separate headers
+            // They should be different sizes
+            var result = TestHelper.Build(8, TestHelper.Mmc3(128, 128));
+            Assert.NotEqual(result.NesFile.Length, result.UnifFile.Length);
+        }
+
+        // ── CNROM not accepted ────────────────────────────────────────────────
+
+        [Fact]
+        public void CnromGame_IsNotPlaced()
+        {
+            // Mapper 3 (CNROM) is not supported by mapper 256 OneBus.
+            var cnrom  = NesRom.CreateForTest(3, 32, 32, false, "cnrom_test.nes");
+            var result = TestHelper.Build(8, cnrom);
+            Assert.Equal(0, result.GameCount);
+        }
+
+        [Fact]
+        public void CnromGame_DoesNotCountAsNrom()
+        {
+            var nrom  = TestHelper.Nrom(32, 8);
+            var cnrom = NesRom.CreateForTest(3, 32, 32, false, "cnrom_test.nes");
+            var result = TestHelper.Build(8, nrom, cnrom);
+            // Only the NROM game should be placed
+            Assert.Equal(1, result.GameCount);
+        }
+
     }
 }

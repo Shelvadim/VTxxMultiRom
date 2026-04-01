@@ -64,7 +64,7 @@ namespace VT03Builder.Forms
         {
             SuspendLayout();
 
-            Text          = "VT03 OneBus NOR Flash Builder  //  T48 Programmer";
+            Text          = "VTxx OneBus NOR Flash Builder  //  T48 Programmer";
             Size          = new Size(1080, 780);
             MinimumSize   = new Size(920, 660);
             BackColor     = C_BG;
@@ -81,7 +81,7 @@ namespace VT03Builder.Forms
             };
             hdr.Controls.Add(new Label
             {
-                Text      = "VT03 ONEBUS NOR FLASH BUILDER",
+                Text      = "VTxx ONEBUS NOR FLASH BUILDER",
                 Font      = new Font("Consolas", 15f, FontStyle.Bold),
                 ForeColor = C_ACCENT,
                 AutoSize  = true,
@@ -263,7 +263,7 @@ namespace VT03Builder.Forms
                 FlatStyle     = FlatStyle.Flat,
                 Font          = new Font("Consolas", 8.5f)
             };
-            _cmbMapper.Items.Add("256  (OneBus / VT03)");
+            _cmbMapper.Items.Add("256  (OneBus / VTxx)");
             _cmbMapper.SelectedIndex = 0;
             right.Controls.Add(_cmbMapper);
 
@@ -394,7 +394,7 @@ namespace VT03Builder.Forms
                         _txtOutput, _btnBrowseOut,
                         _btnBuild, _lblStatus, _rtbLog);
 
-            Log("VT03 OneBus NOR Flash Builder ready.", C_DIM);
+            Log("VTxx OneBus NOR Flash Builder ready.", C_DIM);
             Log("Add .nes ROMs, set chip size and output path, then BUILD.", C_DIM);
 
             ResumeLayout();
@@ -494,7 +494,7 @@ namespace VT03Builder.Forms
                     Log($"+ {rom.FileName}  [{rom.MapperDescription}]  " +
                         $"PRG:{rom.PrgSize / 1024}KB  " +
                         $"CHR:{(rom.ChrSize > 0 ? rom.ChrSize / 1024 + "KB" : "RAM")}" +
-                        (rom.IsSupportedByVT03 ? "" : "  ⚠ mapper not tested on OneBus"),
+                        (rom.IsSupportedByVT03 ? "" : "  ⚠ mapper not tested on OneBus (VTxx)"),
                         rom.IsSupportedByVT03 ? C_GREEN : C_YELLOW);
                 }
                 _games.Add(rom);
@@ -619,7 +619,7 @@ namespace VT03Builder.Forms
 
                 if (cfg.GenerateNes)
                 {
-                    // .nes for FCEUX (mapper 256 — NROM/CNROM works; use NintendulatorNRS for MMC3)
+                    // .nes for FCEUX (mapper 256 — NROM works; use NintendulatorNRS (.unf) for MMC3)
                     string nesPath = Path.ChangeExtension(binPath, ".nes");
                     File.WriteAllBytes(nesPath, result.NesFile);
                     Log($"NES: {nesPath}  (FCEUX — mapper 256)", null);
@@ -656,7 +656,7 @@ namespace VT03Builder.Forms
                           $"Size: {sz / 1024} KB  ({result?.GameCount ?? 0} games)";
             if (cfg.GenerateNes)
                 info += $"\n\nTest files:\n" +
-                        $"  .nes → FCEUX (mapper 256, NROM/CNROM)\n" +
+                        $"  .nes → FCEUX (mapper 256, NROM only)\n" +
                         $"  .unf → NintendulatorNRS (UNL-OneBus, all mappers)\n" +
                         $"  Note: for MMC3 games use NintendulatorNRS (.unf)";
             info += "\n\nFlash the .bin to your NOR chip using the T48 / Xgpro.";

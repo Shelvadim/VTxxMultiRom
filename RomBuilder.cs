@@ -19,7 +19,7 @@ namespace VT03Builder.Services
     ///     0x07C000–0x07C1FF   CFGTABLE  (9 bytes × game count, written by builder)
     ///     0x07E000–0x07FFFF   CPU code  (8 KB)
     ///
-    ///   Free kernel regions used for NROM/CNROM game packing:
+    ///   Free kernel regions used for NROM game packing:
     ///     0x000000–0x03FFFF   256 KB  (before CHR font)
     ///     0x041000–0x078FFF   224 KB  (between CHR and GAMELIST)
     ///
@@ -41,7 +41,7 @@ namespace VT03Builder.Services
         private const int NromEnd         = 0x200000;   // NROM/MMC3 shared window end (PA=0)
         private const int WindowSize      = 0x200000;   // 2 MB window boundary
 
-        // Free regions inside the kernel that NROM/CNROM games can safely use.
+        // Free regions inside the kernel that NROM games can safely use.
         private static readonly (int Start, int End)[] KernelFreeRegions =
         {
             (0x000000, 0x040000),  // 256 KB — before CHR font
@@ -69,7 +69,7 @@ namespace VT03Builder.Services
             Array.Fill(rom, (byte)0xFF);
             Array.Copy(kernelData, rom, kernelData.Length);
 
-            var nromGames = cfg.Games.Where(g => g.Mapper == 0 || g.Mapper == 3).ToList();
+            var nromGames = cfg.Games.Where(g => g.Mapper == 0).ToList();
             var mmc3Games = cfg.Games.Where(g => g.Mapper == 4)
                                      .Where(g => !g.HasChrRam || cfg.AllowChrRam)
                                      .ToList();
@@ -82,7 +82,7 @@ namespace VT03Builder.Services
             // NROM and MMC3 share 0x080000-0x1FFFFF (PA=0). Cap at romSize for 2MB chips.
             int  nromLimit    = Math.Min(romSize, NromEnd);
 
-            // ── NROM / CNROM — free-list packer ──────────────────────────────
+            // ── NROM — free-list packer ──────────────────────────────
             // Priority 1: kernel free gaps (480 KB)
             // Priority 2: 0x080000–nromLimit overflow
             var freeList = new List<(int Start, int End)>(KernelFreeRegions)
@@ -659,19 +659,14 @@ namespace VT03Builder.Services
 
             public static byte[] MakeNes2Rom(byte[] prg, int submapper = 0)
             {
-                // Only include the first 2MB window (PA=0) in the .nes test file.
-                // All games are placed in 0x000000-0x1FFFFF with PA=0 so the
-                // emulator's bank registers (PQ0-PQ3, 0x00-0xFF) map correctly
-                // within this 2MB block. Including the full chip (e.g. 8MB) causes
-                // NintendulatorNRS to use a different bank-address calculation
-                // that produces artefacts. The UNIF PRG0 chunk is also 2MB,
-                // which is why .unf works correctly.
-                const int NesWindow = 0x200000;   // 2 MB = 128 × 16KB banks
-                int nesSize = Math.Min(prg.Length, NesWindow);
-                byte[] hdr    = MakeNes2Header(nesSize / 16384, submapper);
-                byte[] result = new byte[16 + nesSize];
+                // The .nes file contains the full ROM with correct chip size in header.
+                // Note: FCEUX does not support VTxx OneBus native banking ($41xx registers),
+                // so MMC3 games will not work in FCEUX regardless of file size.
+                // NROM games work in FCEUX. Use .unf with NintendulatorNRS for MMC3 games.
+                byte[] hdr    = MakeNes2Header(prg.Length / 16384, submapper);
+                byte[] result = new byte[16 + prg.Length];
                 Array.Copy(hdr, result, 16);
-                Array.Copy(prg, 0, result, 16, nesSize);
+                Array.Copy(prg, 0, result, 16, prg.Length);
                 return result;
             }
 
