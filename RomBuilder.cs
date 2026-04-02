@@ -434,8 +434,8 @@ namespace VT03Builder.Services
             private static void CalcNromVideo(int addr, int mapper,
                                               out byte v4100, out byte r2018, out byte r201A)
             {
+                // mapper 3 (CNROM) is not supported by mapper 256 — no offset applied.
                 addr += 0x1800;
-                if (mapper == 3) addr += 0x4000;
                 v4100 = (byte)((addr >> 21) & 0x0F);
                 r2018 = (byte)(((addr & 0x1FFFFF) / 0x40000) << 4);
                 r201A = (byte)((addr >> 10) & 0xFF);
