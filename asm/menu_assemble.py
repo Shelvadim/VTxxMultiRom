@@ -724,20 +724,20 @@ def assemble_v6():
     a.lbl('input')
     a.LDA_Z(JNN); a.BNE('in_start'); a.JMP('ine'); a.lbl('in_start')
 
-    # ── UP: move cursor up, page-jump when reaching top of page ────────────────
+    # ── UP: move cursor up; page-jump when crossing page boundary ───────────────
+    # After jump: CUR stays at the decremented game (preserves position).
     a.AND_I(BTN_UP); a.BEQ('ckdn')
-    # If CUR==0: already at very first game, nothing to do
     a.LDA_Z(CUR); a.BNE('up_notfirst'); a.JMP('ine'); a.lbl('up_notfirst')
-    a.DEC_Z(CUR)
-    # If CUR still within visible page, just redraw
+    a.DEC_Z(CUR)                           # CUR-- (this is where we want to land)
+    # Still on same page? (CUR >= TOP)
     a.LDA_Z(CUR); a.CMP_Z(TOP); a.BCS('do_up_rdr')
-    # CUR dropped below TOP — page-jump back
+    # CUR < TOP: jump to previous page. TOP = max(0, TOP-VISIBLE).
+    # CUR is already correct — DO NOT set CUR=TOP here.
     a.LDA_Z(TOP); a.CMP_I(VISIBLE); a.BCC('up_clamp')
-    a.SBC_I(VISIBLE)           # TOP -= VISIBLE (full page back)
+    a.SBC_I(VISIBLE)
     a.JMP('up_settop')
-    a.lbl('up_clamp'); a.LDA_I(0)  # TOP < VISIBLE: snap to page 0
-    a.lbl('up_settop'); a.STA_Z(TOP)
-    a.STA_Z(CUR)               # cursor at top of previous page
+    a.lbl('up_clamp'); a.LDA_I(0)
+    a.lbl('up_settop'); a.STA_Z(TOP)      # update TOP only; CUR already correct
     a.lbl('do_up_rdr'); a.JSR('redraw'); a.JMP('ine')
 
     # ── DOWN: page-jump or single scroll ──────────────────────────────────────
@@ -775,25 +775,42 @@ def assemble_v6():
     a.INC_Z(TOP)
     a.lbl('do_dn_rdr'); a.JSR('redraw'); a.JMP('ine')
 
-    # ── LEFT: page up ─────────────────────────────────────────────────────────
+    # ── LEFT: page up — preserve relative cursor row ─────────────────────────────
     a.lbl('cklf')
     a.LDA_Z(JNN); a.AND_I(BTN_LF); a.BEQ('ckrt')
     a.LDA_Z(TOP); a.BNE('lf_go'); a.JMP('ine'); a.lbl('lf_go')
-    # TOP -= VISIBLE (page up), clamp to 0
-    a.SEC(); a.SBC_I(VISIBLE); a.BCS('lf_ok')
+    # Save old_row = CUR - TOP into TMP before changing TOP
+    a.LDA_Z(CUR); a.SEC(); a.SBC_Z(TOP); a.STA_Z(TMP)
+    # TOP -= VISIBLE, clamp to 0
+    a.LDA_Z(TOP); a.SEC(); a.SBC_I(VISIBLE); a.BCS('lf_ok')
     a.LDA_I(0)
-    a.lbl('lf_ok')
-    a.STA_Z(TOP); a.STA_Z(CUR)
+    a.lbl('lf_ok'); a.STA_Z(TOP)
+    # CUR = new_TOP + old_row, clamped to GCN-1
+    a.CLC(); a.ADC_Z(TMP)                     # A = new_TOP + old_row
+    a.CMP_Z(GCN); a.BCC('lf_cur_ok')
+    a.LDA_Z(GCN); a.SBC_I(1)
+    a.lbl('lf_cur_ok'); a.STA_Z(CUR)
     a.JSR('redraw'); a.JMP('ine')
 
-    # ── RIGHT: page down — only if next page has games ──────────────────────────
+    # ── RIGHT: page down — preserve relative cursor row ─────────────────────────
     a.lbl('ckrt')
     a.LDA_Z(JNN); a.AND_I(BTN_RT); a.BEQ('ckla')
-    # Only page if TOP+VISIBLE < GCN (a next page actually exists)
-    a.LDA_Z(TOP); a.CLC(); a.ADC_I(VISIBLE)   # A = TOP + VISIBLE
-    a.CMP_Z(GCN); a.BCS('ine')                 # no next page — do nothing
-    a.STA_Z(TOP)                               # TOP = old_TOP + VISIBLE
-    a.STA_Z(CUR)
+    # Only page if TOP+VISIBLE < GCN
+    a.LDA_Z(TOP); a.CLC(); a.ADC_I(VISIBLE)   # A = new TOP
+    a.CMP_Z(GCN); a.BCS('ine')                 # no next page
+    a.STA_Z(TOP)                               # commit new TOP
+    # CUR = new_TOP + old_row, clamped to GCN-1
+    # old_row = old_CUR - old_TOP = CUR - (TOP - VISIBLE)
+    # Easier: new_CUR = new_TOP + (old_CUR - old_TOP)
+    #        new_CUR = TOP + CUR - (TOP - VISIBLE)  ... use TMP
+    # TMP = old_row = CUR - (new_TOP - VISIBLE) = CUR - new_TOP + VISIBLE
+    a.LDA_Z(CUR); a.SEC(); a.SBC_Z(TOP)       # A = CUR - new_TOP (negative since old_TOP < new_TOP)
+    a.CLC(); a.ADC_I(VISIBLE)                 # A = CUR - new_TOP + VISIBLE = old_row
+    a.STA_Z(TMP)                               # TMP = old_row
+    a.LDA_Z(TOP); a.CLC(); a.ADC_Z(TMP)       # A = new_TOP + old_row
+    a.CMP_Z(GCN); a.BCC('rt_cur_ok')          # if < GCN: fine
+    a.LDA_Z(GCN); a.SBC_I(1)                  # else: clamp to GCN-1
+    a.lbl('rt_cur_ok'); a.STA_Z(CUR)
     a.JSR('redraw'); a.JMP('ine')
 
     # ── LAUNCH (A or START) ───────────────────────────────────────────────────

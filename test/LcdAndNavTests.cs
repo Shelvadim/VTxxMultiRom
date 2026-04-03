@@ -196,12 +196,12 @@ namespace VT03Builder.Tests
         private static (int top, int cur) PressUp(int top, int cur, int gcn)
         {
             if (cur == 0) return (top, cur);                 // already at first game
-            cur--;
-            if (cur >= top) return (top, cur);               // still on same page
+            cur--;                                           // decrement first
+            if (cur >= top) return (top, cur);               // still on same page — done
 
-            // Cursor dropped below TOP → page jump
+            // CUR crossed below TOP: page-jump, but keep CUR at decremented value
             int newTop = top >= VISIBLE ? top - VISIBLE : 0;
-            return (newTop, newTop);
+            return (newTop, cur);                            // CUR unchanged — preserves position
         }
 
         /// <summary>Simulates one Right button press. Returns (newTop, newCur).</summary>
@@ -209,15 +209,19 @@ namespace VT03Builder.Tests
         {
             int nextTop = top + VISIBLE;
             if (nextTop >= gcn) return (top, cur);           // no next page
-            return (nextTop, nextTop);
+            int oldRow  = cur - top;                         // preserve relative row
+            int newCur  = Math.Min(nextTop + oldRow, gcn - 1);
+            return (nextTop, newCur);
         }
 
         /// <summary>Simulates one Left button press. Returns (newTop, newCur).</summary>
         private static (int top, int cur) PressLeft(int top, int cur, int gcn)
         {
             if (top == 0) return (top, cur);                 // already on first page
-            int newTop = top >= VISIBLE ? top - VISIBLE : 0;
-            return (newTop, newTop);
+            int oldRow  = cur - top;                         // preserve relative row
+            int newTop  = top >= VISIBLE ? top - VISIBLE : 0;
+            int newCur  = Math.Min(newTop + oldRow, gcn - 1);
+            return (newTop, newCur);
         }
 
         // ── Down navigation tests ─────────────────────────────────────────────
@@ -558,6 +562,125 @@ namespace VT03Builder.Tests
             // If game was placed, config must not be all-FF (unprogrammed)
             bool allFF = cfg.All(b => b == 0xFF);
             Assert.False(allFF, $"Game {gameIndex} config is all 0xFF — not placed or wrong offset");
+        }
+
+        // ── Position-preserving navigation tests ─────────────────────────────
+
+        [Fact]
+        public void Up_AtTopOfPage2_PreservesRelativePosition()
+        {
+            // Bug: cursor on game 21 (index 20, top of page 2), UP → cursor goes to index 0
+            // Fix: cursor should stay at index 19 (last game of page 1 = position 20)
+            int gcn = 40;
+            var (top, cur) = (20, 20);   // game 21, first of page 2
+            (top, cur) = PressUp(top, cur, gcn);
+            Assert.Equal(0,  top);       // page 1
+            Assert.Equal(19, cur);       // position 20 (index 19), NOT position 1 (index 0)
+        }
+
+        [Fact]
+        public void Up_MiddleOfPage2_PreservesPosition()
+        {
+            // Cursor on game 25 (index 24, row 4 of page 2): UP → index 23 on page 1
+            int gcn = 40;
+            var (top, cur) = (20, 24);
+            (top, cur) = PressUp(top, cur, gcn);
+            Assert.Equal(20, top);   // still on page 2 (just moved up one row)
+            Assert.Equal(23, cur);
+        }
+
+        [Fact]
+        public void Right_PreservesRelativeRow()
+        {
+            // Bug: cursor on game 10 (index 9, row 9), RIGHT → cursor at position 21 (index 20)
+            // Fix: cursor should stay at row 9 → index 29 on page 2 (position 30)
+            int gcn = 60;
+            var (top, cur) = (0, 9);     // row 9 on page 1
+            (top, cur) = PressRight(top, cur, gcn);
+            Assert.Equal(20, top);       // page 2
+            Assert.Equal(29, cur);       // row 9 on page 2 = index 29, NOT index 20
+        }
+
+        [Fact]
+        public void Right_Row0_LandsAtFirstOfNextPage()
+        {
+            // Cursor at top of page (row 0): RIGHT → still at row 0 of next page
+            int gcn = 60;
+            var (top, cur) = (0, 0);
+            (top, cur) = PressRight(top, cur, gcn);
+            Assert.Equal(20, top);
+            Assert.Equal(20, cur);   // row 0 of page 2
+        }
+
+        [Fact]
+        public void Left_PreservesRelativeRow()
+        {
+            // Cursor on game 30 (index 29, row 9 of page 2): LEFT → row 9 of page 1 = index 9
+            int gcn = 60;
+            var (top, cur) = (20, 29);   // row 9 on page 2
+            (top, cur) = PressLeft(top, cur, gcn);
+            Assert.Equal(0,  top);       // page 1
+            Assert.Equal(9, cur);        // row 9 of page 1 = index 9
+        }
+
+        [Fact]
+        public void Left_Row0_LandsAtFirstOfPrevPage()
+        {
+            // Cursor at top of page 2 (row 0): LEFT → row 0 of page 1
+            int gcn = 60;
+            var (top, cur) = (20, 20);
+            (top, cur) = PressLeft(top, cur, gcn);
+            Assert.Equal(0, top);
+            Assert.Equal(0, cur);
+        }
+
+        [Fact]
+        public void Right_ClampsToLastGame_WhenRowExceedsGcn()
+        {
+            // 25 games: page 1 has rows 0-19, page 2 has rows 0-4 (games 20-24)
+            // Cursor at row 9 of page 1 (index 9): RIGHT → row 9 would be index 29, but GCN=25
+            // So cursor should clamp to GCN-1=24
+            int gcn = 25;
+            var (top, cur) = (0, 9);
+            (top, cur) = PressRight(top, cur, gcn);
+            Assert.Equal(20, top);
+            Assert.Equal(24, cur);   // clamped to last game
+        }
+
+        [Fact]
+        public void UpThenRight_CursorConsistent()
+        {
+            // Navigate to row 5 of page 2, press UP, then RIGHT: should end at row 5 of page 2
+            int gcn = 60;
+            var (top, cur) = (20, 25);   // row 5 of page 2
+            (top, cur) = PressUp(top, cur, gcn);   // move to row 4 of page 2
+            Assert.Equal(20, top); Assert.Equal(24, cur);
+            (top, cur) = PressDown(top, cur, gcn);  // back to row 5
+            Assert.Equal(20, top); Assert.Equal(25, cur);
+        }
+
+        [Fact]
+        public void RightLeft_ReturnToSamePosition()
+        {
+            // RIGHT then LEFT should return to original cursor position
+            int gcn = 60;
+            var (top0, cur0) = (0, 7);
+            var (top, cur) = PressRight(top0, cur0, gcn);
+            (top, cur) = PressLeft(top, cur, gcn);
+            Assert.Equal(top0, top);
+            Assert.Equal(cur0, cur);
+        }
+
+        [Fact]
+        public void Up_AtRow5OfPage2_LandsAtRow5OfPage1()
+        {
+            // UP at row 5, page 2 (index 25) → stays at row 5, still page 2 (just moves up)
+            // Because row 5 > 0 of page, so it's just a normal up, not page jump
+            int gcn = 60;
+            var (top, cur) = (20, 25);   // row 5, page 2
+            (top, cur) = PressUp(top, cur, gcn);
+            Assert.Equal(20, top);       // still page 2
+            Assert.Equal(24, cur);       // row 4, page 2
         }
 
     }
