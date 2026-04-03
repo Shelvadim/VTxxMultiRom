@@ -724,13 +724,20 @@ def assemble_v6():
     a.lbl('input')
     a.LDA_Z(JNN); a.BNE('in_start'); a.JMP('ine'); a.lbl('in_start')
 
-    # ── UP: move cursor up one, or page up if at top of page ──────────────────
+    # ── UP: move cursor up, page-jump when reaching top of page ────────────────
     a.AND_I(BTN_UP); a.BEQ('ckdn')
+    # If CUR==0: already at very first game, nothing to do
     a.LDA_Z(CUR); a.BNE('up_notfirst'); a.JMP('ine'); a.lbl('up_notfirst')
     a.DEC_Z(CUR)
-    # If cursor went above TOP, scroll or page up
+    # If CUR still within visible page, just redraw
     a.LDA_Z(CUR); a.CMP_Z(TOP); a.BCS('do_up_rdr')
-    a.DEC_Z(TOP)                         # scroll up one
+    # CUR dropped below TOP — page-jump back
+    a.LDA_Z(TOP); a.CMP_I(VISIBLE); a.BCC('up_clamp')
+    a.SBC_I(VISIBLE)           # TOP -= VISIBLE (full page back)
+    a.JMP('up_settop')
+    a.lbl('up_clamp'); a.LDA_I(0)  # TOP < VISIBLE: snap to page 0
+    a.lbl('up_settop'); a.STA_Z(TOP)
+    a.STA_Z(CUR)               # cursor at top of previous page
     a.lbl('do_up_rdr'); a.JSR('redraw'); a.JMP('ine')
 
     # ── DOWN: page-jump or single scroll ──────────────────────────────────────
@@ -779,15 +786,14 @@ def assemble_v6():
     a.STA_Z(TOP); a.STA_Z(CUR)
     a.JSR('redraw'); a.JMP('ine')
 
-    # ── RIGHT: page down ──────────────────────────────────────────────────────
+    # ── RIGHT: page down — only if next page has games ──────────────────────────
     a.lbl('ckrt')
     a.LDA_Z(JNN); a.AND_I(BTN_RT); a.BEQ('ckla')
-    # Same as page-down
-    a.LDA_Z(TOP); a.CLC(); a.ADC_I(VISIBLE); a.STA_Z(TOP)
-    a.CMP_Z(GCN); a.BCC('rt_ok')
-    a.LDA_Z(GCN); a.SBC_I(1); a.STA_Z(TOP)
-    a.lbl('rt_ok')
-    a.LDA_Z(TOP); a.STA_Z(CUR)
+    # Only page if TOP+VISIBLE < GCN (a next page actually exists)
+    a.LDA_Z(TOP); a.CLC(); a.ADC_I(VISIBLE)   # A = TOP + VISIBLE
+    a.CMP_Z(GCN); a.BCS('ine')                 # no next page — do nothing
+    a.STA_Z(TOP)                               # TOP = old_TOP + VISIBLE
+    a.STA_Z(CUR)
     a.JSR('redraw'); a.JMP('ine')
 
     # ── LAUNCH (A or START) ───────────────────────────────────────────────────
@@ -798,12 +804,24 @@ def assemble_v6():
 
     # ── launch ────────────────────────────────────────────────────────────────
     a.lbl('launch')
-    a.LDA_Z(CUR); a.STA_Z(TMP)
-    a.ASL(); a.ASL(); a.ASL(); a.CLC(); a.ADC_Z(TMP); a.TAY()
+    # Set PLO/PHI = CFGTABLE + CUR*9  (16-bit — Y overflow fix for CUR >= 29)
+    # Step 1: PLO/PHI = &CFGTABLE
+    a.LDA_I(0); a.STA_Z(PLO)
+    a.LDA_I(192);   a.STA_Z(PHI)
+    # Step 2: add 9 CUR times
+    a.LDA_Z(CUR); a.BEQ('ldc_skip')   # CUR==0: already pointing at game 0
+    a.STA_Z(TMP)
+    a.lbl('ldc_adv')
+    a.LDA_Z(PLO); a.CLC(); a.ADC_I(9); a.STA_Z(PLO)
+    a.BCC('ldc_noc'); a.INC_Z(PHI)
+    a.lbl('ldc_noc')
+    a.DEC_Z(TMP); a.BNE('ldc_adv')
+    a.lbl('ldc_skip')
+    # Step 3: copy 9 bytes from (PLO/PHI) to CFG ($0300)
     a.LDA_I(0); a.STA_A(PPUCTRL); a.STA_A(PPUMASK)
-    a.LDX_I(0)
-    a.lbl('ldc'); a.LDA_AY(CFGTABLE); a.STA_AX(CFG)
-    a.INX(); a.INY(); a.CPX_I(9); a.BNE('ldc')
+    a.LDY_I(0); a.LDX_I(0)
+    a.lbl('ldc'); a.LDA_IY(PLO); a.STA_AX(CFG)
+    a.INY(); a.INX(); a.CPX_I(9); a.BNE('ldc')
     a.LDX_I(0);  a.LDA_AX(CFG); a.AND_I(0x77); a.STA_Z(ZP_4100)
     a.LDX_I(8);  a.LDA_AX(CFG); a.LSR(); a.LSR(); a.LSR(); a.LSR()
     a.ORA_Z(ZP_4100); a.STA_Z(ZP_4100)
