@@ -26,6 +26,7 @@ namespace VT03Builder.Forms
         private Button      _btnBrowseOut = null!;
         private CheckBox    _chkNes       = null!;
         private CheckBox    _chkChrRam    = null!;
+        private CheckBox    _chkLcd       = null!;
         private Button      _btnBuild     = null!;
         private Button      _btnGenHeader = null!;
         private Label       _lblStatus    = null!;
@@ -314,6 +315,21 @@ namespace VT03Builder.Forms
             _chkChrRam.CheckedChanged += (s, e) => { RefreshList(); UpdateSpace(); };
             right.Controls.Add(_chkChrRam);
 
+            sy += 24;
+            _chkLcd = new CheckBox
+            {
+                Text      = "Add LCD initialization (SUP 400-in-1 / TFT handheld consoles)",
+                Location  = new Point(10, sy),
+                AutoSize  = true,
+                ForeColor = C_DIM,
+                BackColor = Color.Transparent,
+                Font      = new Font("Consolas", 8.5f),
+                Checked   = false,
+                Cursor    = Cursors.Hand
+            };
+            _chkLcd.CheckedChanged += OnLcdCheckedChanged;
+            right.Controls.Add(_chkLcd);
+
             sy += 28;
             right.Controls.Add(Lbl("Swap pins:", new Point(10, sy + 2)));
             _cmbPinSwap = new ComboBox
@@ -537,6 +553,17 @@ namespace VT03Builder.Forms
         }
 
 
+        private void OnLcdCheckedChanged(object? s, EventArgs e)
+        {
+            if (_chkLcd.Checked)
+            {
+                Log("LCD init enabled: stub written at NOR 0x06E000.", C_DIM);
+                Log("  Covers Type 1/2 ($412C) and Type 3 ($413F/$4138/$4139) backlight.", C_DIM);
+                Log("  The console's own TFT init (NOR 0x60000-0x6DFFF) must be", C_DIM);
+                Log("  present in the flash — flash your original kernel there first.", C_DIM);
+            }
+        }
+
         private void OnSubmapperChanged(object? s, EventArgs e)
         {
             var item = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
@@ -689,6 +716,7 @@ namespace VT03Builder.Forms
             OutputPath   = _txtOutput?.Text.Trim() ?? string.Empty,
             GenerateNes  = _chkNes?.Checked ?? true,
             AllowChrRam  = _chkChrRam?.Checked ?? false,
+            InitLcd      = _chkLcd?.Checked    ?? false,
             PinSwap      = _cmbPinSwap?.SelectedIndex ?? 0,
             Mapper       = 256,   // only one mapper for now
             Submapper    = (_cmbSubmapper?.SelectedItem as ComboBoxSubmapperItem)?.Number ?? 0,
