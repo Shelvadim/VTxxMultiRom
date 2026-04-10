@@ -29,6 +29,12 @@ namespace VT03Builder.Tests
             var k = new byte[0x80000];
             Array.Fill(k, (byte)0xAB);
             k[0] = 0x4B; k[1] = 0x45; k[2] = 0x52; k[3] = 0x4E;  // "KERN"
+            // Simulate the real kernel's RESET vector at 0x07E000 (CPU $E000).
+            // The LCD stub test checks this byte is untouched after stub is written.
+            k[0x07E000] = 0x78;   // SEI — first byte of real menu RESET handler
+            // Leave the LCD stub region (0x06E000-0x06E0FF) as 0xFF to match
+            // real unprogrammed flash — the stub tests check this region.
+            for (int i = 0x06E000; i < 0x06E100 && i < k.Length; i++) k[i] = 0xFF;
             return k;
         }
 

@@ -9,18 +9,22 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- Exclude the test\ subfolder from the main project completely -->
+  <!-- Kernel ROM embedded as a resource (512 KB flat binary). -->
   <ItemGroup>
-    <Compile Remove="test\**" />
-    <EmbeddedResource Remove="test\**" />
-    <None Remove="test\**" />
-  </ItemGroup>
-
-  <!-- Kernel ROM embedded as a resource -->
-  <ItemGroup>
-    <EmbeddedResource Include="original_menu_patched.rom">
+    <EmbeddedResource Include="Services\original_menu_patched.rom">
       <LogicalName>original_menu_patched.rom</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <!--
+    Exclude the test\ subfolder from the main project's SDK glob.
+    Without this, the SDK auto-includes test\*.cs which causes:
+      - "Xunit not found" (test files reference xunit which isn't a dependency here)
+      - "Duplicate assembly attribute" (both projects emit the same SDK attributes)
+    The test project has its own .csproj and compiles independently.
+  -->
+  <ItemGroup>
+    <Compile Remove="test\**\*.cs" />
   </ItemGroup>
 
 </Project>

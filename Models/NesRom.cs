@@ -124,28 +124,8 @@ namespace VT03Builder.Models
 
         public string MapperDescription => $"{MapperName} ({Mapper})";
 
-        // Mappers supported by this VTxx OneBus builder (mapper 256): NROM and MMC3 only.
-        public bool IsSupportedByVT03 => Mapper is 0 or 4;
-
         /// <summary>True if this game uses CHR-RAM instead of CHR-ROM.</summary>
         public bool HasChrRam => ChrRomBanks == 0;
-
-        /// <summary>
-        /// VTxx OneBus MMC3 compatibility warning.
-        /// Returns null if OK, or a short warning string if likely to grey-screen.
-        /// </summary>
-        public string? Vt03CompatWarning
-        {
-            get
-            {
-                if (Mapper != 4) return null;
-                if (HasChrRam)
-                    return "CHR-RAM — will grey screen (VTxx OneBus MMC3 needs CHR-ROM)";
-                if (PrgSize > 256 * 1024)
-                    return "PRG>256KB — may grey screen if game uses MMC3 IRQ";
-                return null;
-            }
-        }
 
 
         /// <summary>Create a synthetic NesRom for unit tests — no file I/O.</summary>

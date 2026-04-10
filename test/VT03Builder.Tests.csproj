@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- No auto-include — we list every file explicitly below -->
+    <!-- Disable auto-include — we list exactly what compiles. -->
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
@@ -19,18 +19,50 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Main project source files (one level up, in the root) -->
-    <Compile Include="..\BuildConfig.cs"     />
-    <Compile Include="..\NesRom.cs"          />
-    <Compile Include="..\RomBuilder.cs"      />
-    <Compile Include="..\SpaceCalculator.cs" />
-    <!-- Test files (this folder) -->
+    <!-- ── Models ────────────────────────────────────────────────────────── -->
+    <Compile Include="..\Models\BuildConfig.cs"      />
+    <Compile Include="..\Models\NesRom.cs"           />
+    <Compile Include="..\Models\GameBankingInfo.cs"  />
+    <Compile Include="..\Models\GameEntry.cs"        />
+    <Compile Include="..\Models\SubmapperInfo.cs"    />
+
+    <!-- ── Services ──────────────────────────────────────────────────────── -->
+    <Compile Include="..\Services\RomBuilder.cs"      />
+    <Compile Include="..\Services\SpaceCalculator.cs" />
+
+    <!-- ── Services\Targets ──────────────────────────────────────────────── -->
+    <Compile Include="..\Services\Targets\IHardwareTarget.cs"   />
+    <Compile Include="..\Services\Targets\TargetRegistry.cs"    />
+    <Compile Include="..\Services\Targets\VtxxOneBusTarget.cs"  />
+    <Compile Include="..\Services\Targets\CoolBoyTarget.cs"     />
+
+    <!-- ── Services\SourceMappers ────────────────────────────────────────── -->
+    <Compile Include="..\Services\SourceMappers\ISourceMapperHandler.cs"   />
+    <Compile Include="..\Services\SourceMappers\SourceMapperRegistry.cs"   />
+    <Compile Include="..\Services\SourceMappers\NromHandler.cs"            />
+    <Compile Include="..\Services\SourceMappers\Mmc3Handler.cs"            />
+
+    <!-- ── Services\Hardware ─────────────────────────────────────────────── -->
+    <Compile Include="..\Services\Hardware\OneBusBanking.cs"   />
+    <Compile Include="..\Services\Hardware\PinSwap.cs"         />
+    <Compile Include="..\Services\Hardware\CoolBoyBanking.cs"  />
+
+    <!-- ── Services\Output ───────────────────────────────────────────────── -->
+    <Compile Include="..\Services\Output\NesFileWriter.cs" />
+
+    <!-- ── Mapper256Builder (nested class — stays in RomBuilder.cs) ─────── -->
+    <!-- No separate file needed; Mapper256Builder is a nested class -->
+
+    <!-- ── Test files ────────────────────────────────────────────────────── -->
     <Compile Include="TestHelper.cs"          />
     <Compile Include="BinaryLayoutTests.cs"   />
     <Compile Include="ChipSizeTests.cs"       />
     <Compile Include="Mmc3ChrBankTests.cs"    />
     <Compile Include="Mmc3PrgBankTests.cs"    />
     <Compile Include="ReferenceGameTests.cs"  />
+    <Compile Include="SpaceAndLayoutTests.cs" />
+    <Compile Include="LcdAndNavTests.cs"      />
+    <Compile Include="CoolBoyTests.cs"        />
   </ItemGroup>
 
 </Project>

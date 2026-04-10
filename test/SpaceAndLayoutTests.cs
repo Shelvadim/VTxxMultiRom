@@ -109,8 +109,7 @@ namespace VT03Builder.Tests
             int b4       = cfg[4];
             int startNor = outer * 0x200000 + b4 * 8192;
             int expectedE000 = startNor + prgKb * 1024 - 8192;
-            Assert.Equal(expectedE000, norAddr,
-                $"$E000 should map to NOR 0x{expectedE000:X6} for {prgKb}KB PRG, got 0x{norAddr:X6}");
+            Assert.True(norAddr == expectedE000, $"$E000 should map to NOR 0x{expectedE000:X6} for {prgKb}KB PRG, got 0x{norAddr:X6}");
         }
 
         // ── 3. MMC3 config for 256KB PRG games ───────────────────────────────
@@ -137,8 +136,7 @@ namespace VT03Builder.Tests
             int norAddr   = bankNum * 8192;
             int startNor  = outer * 0x200000 + b4 * 8192;
             int expectedE000 = startNor + prgKb * 1024 - 8192;
-            Assert.Equal(expectedE000, norAddr,
-                $"$E000 NOR 0x{norAddr:X6} != expected 0x{expectedE000:X6}");
+            Assert.True(norAddr == expectedE000, $"$E000 NOR 0x{norAddr:X6} != expected 0x{expectedE000:X6}");
         }
 
         // ── 4. MMC3 covers all PRG sizes ─────────────────────────────────────
@@ -290,8 +288,7 @@ namespace VT03Builder.Tests
             int prg12bit = ((hdr[9] & 0x0F) << 8) | hdr[4];
             int expected16k = (chipMb * 1024 * 1024) / (16 * 1024);
 
-            Assert.Equal(expected16k, prg12bit,
-                $"NES header PRG field should encode {chipMb}MB = {expected16k} × 16KB banks");
+            Assert.True(prg12bit == expected16k, $"NES header PRG field should encode {chipMb}MB = {expected16k} × 16KB banks");
         }
 
         [Fact]

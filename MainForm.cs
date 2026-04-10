@@ -7,6 +7,9 @@ using System.Threading;
 using System.Windows.Forms;
 using VT03Builder.Models;
 using VT03Builder.Services;
+using VT03Builder.Services.Output;
+using VT03Builder.Services.SourceMappers;
+using VT03Builder.Services.Targets;
 
 namespace VT03Builder.Forms
 {
@@ -485,7 +488,9 @@ namespace VT03Builder.Forms
                     Log($"✗ {Path.GetFileName(path)}: {rom.ParseError}", C_RED);
                     bad++; continue;
                 }
-                string? compatWarn = rom.Vt03CompatWarning;
+                string? compatWarn = SourceMapperRegistry.Get(rom.Mapper)
+                                         ?.CompatibilityWarning(rom,
+                                               TargetRegistry.GetRequired("vtxx"));
                 if (compatWarn != null)
                 {
                     // CHR-RAM MMC3 games will grey screen unless the console has CHR-RAM hardware
@@ -510,8 +515,10 @@ namespace VT03Builder.Forms
                     Log($"+ {rom.FileName}  [{rom.MapperDescription}]  " +
                         $"PRG:{rom.PrgSize / 1024}KB  " +
                         $"CHR:{(rom.ChrSize > 0 ? rom.ChrSize / 1024 + "KB" : "RAM")}" +
-                        (rom.IsSupportedByVT03 ? "" : "  ⚠ mapper not tested on OneBus (VTxx)"),
-                        rom.IsSupportedByVT03 ? C_GREEN : C_YELLOW);
+                        (SourceMapperRegistry.IsSupported(rom.Mapper)
+                            ? "" : "  ⚠ mapper not tested on OneBus (VTxx)"),
+                        SourceMapperRegistry.IsSupported(rom.Mapper)
+                            ? C_GREEN : C_YELLOW);
                 }
                 _games.Add(rom);
                 added++;
@@ -586,7 +593,7 @@ namespace VT03Builder.Forms
                 chipStr = "8 MB";
             int chipMb = int.TryParse(chipStr.Split(' ')[0], out var val) ? val : 8;
 
-            string desc = Mapper256Builder.DescribeHeader(submapper, chipMb);
+            string desc = NesFileWriter.DescribeHeader(submapper, chipMb);
             foreach (string line in desc.Split('\n'))
                 Log(line.TrimEnd(), C_ACCENT);
         }
@@ -718,7 +725,7 @@ namespace VT03Builder.Forms
             AllowChrRam  = _chkChrRam?.Checked ?? false,
             InitLcd      = _chkLcd?.Checked    ?? false,
             PinSwap      = _cmbPinSwap?.SelectedIndex ?? 0,
-            Mapper       = 256,   // only one mapper for now
+            // Mapper is now computed from TargetId (always 256 for VTxx)
             Submapper    = (_cmbSubmapper?.SelectedItem as ComboBoxSubmapperItem)?.Number ?? 0,
             ChipSizeMb   = _cmbChip?.SelectedIndex switch
             {
@@ -753,9 +760,13 @@ namespace VT03Builder.Forms
                     status   = allowChrRam ? "⚠ CHR-RAM" : "✗ CHR-RAM";
                     rowColor = allowChrRam ? C_YELLOW    : C_RED;
                 }
-                else if (g.Vt03CompatWarning != null){ status = "⚠ IRQ?";   rowColor = C_YELLOW; }
-                else if (!g.IsSupportedByVT03)      { status = "⚠ Mapper";  rowColor = C_YELLOW; }
-                else                                { status = "OK";         rowColor = C_TEXT; }
+                else if (SourceMapperRegistry.Get(g.Mapper)
+                             ?.CompatibilityWarning(g,
+                                   TargetRegistry.GetRequired("vtxx")) != null)
+                                            { status = "⚠ IRQ?";   rowColor = C_YELLOW; }
+                else if (!SourceMapperRegistry.IsSupported(g.Mapper))
+                                            { status = "⚠ Mapper";  rowColor = C_YELLOW; }
+                else                        { status = "OK";         rowColor = C_TEXT; }
                 item.ForeColor = rowColor;
                 item.SubItems.Add(status);
                 _lstGames.Items.Add(item);

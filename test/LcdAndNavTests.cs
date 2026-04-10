@@ -32,7 +32,7 @@ namespace VT03Builder.Tests
                 Games      = new System.Collections.Generic.List<NesRom>
                              { TestHelper.Nrom(32, 8) }
             };
-            var result = RomBuilder.Build(cfg, null, null);
+            var result = RomBuilder.Build(cfg, TestHelper.FakeKernel());
             return result.NorBinary;
         }
 
@@ -198,10 +198,10 @@ namespace VT03Builder.Tests
             if (cur == 0) return (top, cur);                 // already at first game
             cur--;                                           // decrement first
             if (cur >= top) return (top, cur);               // still on same page — done
-
-            // CUR crossed below TOP: page-jump, but keep CUR at decremented value
+            // CUR crossed below TOP → page-jump, but CUR stays at decremented value
+            // (preserves relative row within the previous page)
             int newTop = top >= VISIBLE ? top - VISIBLE : 0;
-            return (newTop, cur);                            // CUR unchanged — preserves position
+            return (newTop, cur);
         }
 
         /// <summary>Simulates one Right button press. Returns (newTop, newCur).</summary>
@@ -301,21 +301,24 @@ namespace VT03Builder.Tests
         public void Up_AtTopOfPage2_JumpsToPage1()
         {
             // State: TOP=20, CUR=20 (top of page 2). Press Up → jump to page 1.
+            // CUR decrements to 19, crosses below TOP → page jump, CUR stays at 19.
             int gcn = 40;
             var (top, cur) = (20, 20);
             (top, cur) = PressUp(top, cur, gcn);
-            Assert.Equal(0, top);   // back to page 1
-            Assert.Equal(0, cur);   // cursor at top of page 1
+            Assert.Equal(0,  top);   // back to page 1
+            Assert.Equal(19, cur);   // last item of page 1 (relative position preserved)
         }
 
         [Fact]
         public void Up_AtTopOfPage3_JumpsToPage2()
         {
+            // CUR=40 decrements to 39, crosses below TOP=40 → jump to page 2.
+            // CUR stays at 39 (last item of page 2).
             int gcn = 60;
             var (top, cur) = (40, 40);  // top of page 3
             (top, cur) = PressUp(top, cur, gcn);
             Assert.Equal(20, top);   // page 2
-            Assert.Equal(20, cur);
+            Assert.Equal(39, cur);   // last item of page 2
         }
 
         [Fact]
@@ -331,14 +334,17 @@ namespace VT03Builder.Tests
         [Fact]
         public void Up_FromPage2_RepeatedPressStaysOnPage1()
         {
-            // After page-jumping to page 1, repeated Up should scroll normally within page 1
+            // After page-jumping to page 1 (landing at cur=19), pressing Up again
+            // scrolls normally within page 1 (cur-- from 19 to 18, stays on page 1).
             int gcn = 40;
             var (top, cur) = (20, 20);
-            (top, cur) = PressUp(top, cur, gcn);  // page jump to top of page 1
-            Assert.Equal(0, top); Assert.Equal(0, cur);
-            // Further Up at game 0 does nothing
-            (top, cur) = PressUp(top, cur, gcn);
-            Assert.Equal(0, top); Assert.Equal(0, cur);
+            (top, cur) = PressUp(top, cur, gcn);  // page jump: (0, 19)
+            Assert.Equal(0,  top);
+            Assert.Equal(19, cur);
+            // Further Up scrolls within page 1 without page-jumping
+            (top, cur) = PressUp(top, cur, gcn);  // cur 19→18, still on page 1
+            Assert.Equal(0,  top);
+            Assert.Equal(18, cur);
         }
 
         // ── Right/Left navigation tests ───────────────────────────────────────
@@ -426,8 +432,8 @@ namespace VT03Builder.Tests
             Assert.Equal(VISIBLE, top);  // now on page 1
             // Press Up once — should jump back to page 0 immediately
             (top, cur) = PressUp(top, cur, gcn);
-            Assert.Equal(0, top);
-            Assert.Equal(0, cur);
+            Assert.Equal(0,  top);   // back to page 0
+            Assert.Equal(19, cur);   // last item of page 0 (relative position)
         }
 
         [Fact]
@@ -466,7 +472,7 @@ namespace VT03Builder.Tests
             // Add enough MMC3 games to exceed CUR=28 (the overflow point)
             for (int i = 0; i < count; i++)
                 cfg.Games.Add(TestHelper.Mmc3(64, 64));
-            var result = RomBuilder.Build(cfg, null, null);
+            var result = RomBuilder.Build(cfg, TestHelper.FakeKernel());
             return result.NorBinary;
         }
 

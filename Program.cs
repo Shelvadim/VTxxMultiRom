@@ -5,6 +5,8 @@ using System.Linq;
 using System.Windows.Forms;
 using VT03Builder.Models;
 using VT03Builder.Services;
+using VT03Builder.Services.SourceMappers;
+using VT03Builder.Services.Targets;
 
 namespace VT03Builder
 {
@@ -125,10 +127,10 @@ namespace VT03Builder
                     anyFailed = true;
                     continue;
                 }
-                if (!rom.IsSupportedByVT03)
+                if (!SourceMapperRegistry.IsSupported(rom.Mapper))
                 {
                     Warn($"SKIP  {rom.FileName}: mapper {rom.Mapper} not supported " +
-                         $"(use 0/NROM, 3/CNROM, 4/MMC3)");
+                         $"(use 0/NROM, 4/MMC3)");
                     anyFailed = true;
                     continue;
                 }
@@ -139,7 +141,9 @@ namespace VT03Builder
                     continue;
                 }
 
-                string? compatWarn = rom.Vt03CompatWarning;
+                var vtxxTarget = TargetRegistry.GetRequired("vtxx");
+                string? compatWarn = SourceMapperRegistry.Get(rom.Mapper)
+                                         ?.CompatibilityWarning(rom, vtxxTarget);
                 if (compatWarn != null)
                     Warn($"WARN  {rom.FileName}: {compatWarn}");
 
@@ -165,7 +169,6 @@ namespace VT03Builder
                 ChipSizeMb  = chipSizeMb,
                 OutputPath  = outBin,
                 GenerateNes = genNes,
-                Mapper      = 256,
                 Submapper   = submapper,
             };
 
