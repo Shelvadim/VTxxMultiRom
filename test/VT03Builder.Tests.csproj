@@ -65,4 +65,17 @@
     <Compile Include="CoolBoyTests.cs"        />
   </ItemGroup>
 
+  <!-- ROM files must be embedded in the test assembly too.
+       CoolBoyTarget.LoadMenuRom() and VtxxOneBusTarget.LoadKernel() call
+       Assembly.GetExecutingAssembly().GetManifestResourceStream() — in the
+       test runner that assembly is VT03Builder.Tests, not VT03Builder. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Services\original_menu_patched.rom">
+      <LogicalName>original_menu_patched.rom</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Services\coolboy_menu.rom">
+      <LogicalName>coolboy_menu.rom</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

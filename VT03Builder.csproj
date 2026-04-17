@@ -9,10 +9,13 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- Kernel ROM embedded as a resource (512 KB flat binary). -->
+  <!-- Kernel / menu ROMs embedded as resources. -->
   <ItemGroup>
     <EmbeddedResource Include="Services\original_menu_patched.rom">
       <LogicalName>original_menu_patched.rom</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Services\coolboy_menu.rom">
+      <LogicalName>coolboy_menu.rom</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

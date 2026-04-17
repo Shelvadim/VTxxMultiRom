@@ -45,11 +45,14 @@ namespace VT03Builder.Tests
 
         private static byte[] GetConfig(byte[] flash, int gameIndex)
         {
-            const int TableBase = 0x7F00;
-            const int CfgBase   = TableBase + 2;
-            const int RecSize   = 8;
-            var rec = new byte[RecSize];
-            Array.Copy(flash, CfgBase + gameIndex * RecSize, rec, 0, RecSize);
+            // Table at flash 0x004000; count at [0-1]; records from [2+]; 32 bytes each.
+            // First 10 bytes of each record are the CoolBoy config (regs + CHR + mirror).
+            const int TableBase  = 0x004000;
+            const int CfgBase    = TableBase + 2;
+            const int RecordSize = 32;   // total bytes per game entry in the table
+            const int CfgSize    = 10;   // config portion (CoolBoyBanking.RecordBytes)
+            var rec = new byte[CfgSize];
+            Array.Copy(flash, CfgBase + gameIndex * RecordSize, rec, 0, CfgSize);
             return rec;
         }
 
@@ -81,9 +84,10 @@ namespace VT03Builder.Tests
         }
 
         [Fact]
-        public void CoolBoy_ConfigRecord_8Bytes()
+        public void CoolBoy_ConfigRecord_10Bytes()
         {
-            Assert.Equal(8, Target.ConfigRecordBytes);
+            // CoolBoyBanking.BuildConfig returns 10 bytes: regs[0-3] + CHR[4-7] + mirror[8] + pad[9]
+            Assert.Equal(10, Target.ConfigRecordBytes);
         }
 
         [Fact]
@@ -120,27 +124,26 @@ namespace VT03Builder.Tests
         // ── 3. Config record — outer bank register values ─────────────────────
 
         [Fact]
-        public void CoolBoy_Config_NormFirstGame_OuterBankZero()
+        public void CoolBoy_Config_Reg0_FirstGameSlot()
         {
-            // A game at flash offset 0x080000 (first game slot, outer window 1)
-            // Outer PRG = 0x080000 / 512KB = 1
-            // Reg0 bits 7-3 = 1 (outer A20-A16) → 0b00001000 = 0x08
+            // Game at flash 0x080000: bank16k=0x20, bkLo=0x20, bkHi=0
+            // reg0 = ((0x20 & 0x38)>>3) | ((0 & 0x06)<<3) | 0xC0
+            //      = (0x20>>3)=4 | 0 | 0xC0 = 0xC4
             var result = Build(8, 0, TestHelper.Nrom(32, 8));
             var cfg    = GetConfig(result.NorBinary, 0);
-            // For an NROM game the outer bank selects the 512KB window.
-            // Game goes at 0x080000, outer = 1 → reg0 = 0x08
-            Assert.Equal(8, cfg.Length);
-            // Reg0 bits 7-3 should encode outer bank 1 → 0x08
-            Assert.Equal(0x08, cfg[0] & 0xF8);
+            Assert.Equal(10, cfg.Length);
+            Assert.Equal(0xC4, cfg[0]);   // reg0 for game at 0x080000
+            Assert.Equal(0x80, cfg[1]);   // reg1: only mask bit set (bkLo bits 6,7 = 0)
         }
 
         [Fact]
-        public void CoolBoy_Config_Reg3_IsZero_BeforeLockout()
+        public void CoolBoy_Config_Reg3_HasNromModeBit()
         {
-            // Config record reg3 is stored as 0x00 — menu writes 0x80 at runtime
+            // REG3 always has bit4=1 (NROM mode). Menu adds bit7=1 (lockout) at launch time.
+            // For game at 0x080000: bkLo=0x20, (0x20 & 0x07)<<1 = 0, so reg3 = 0x10.
             var result = Build(8, 0, TestHelper.Nrom(32, 8));
             var cfg    = GetConfig(result.NorBinary, 0);
-            Assert.Equal(0x00, cfg[3]);
+            Assert.Equal(0x10, cfg[3] & 0x10);   // NROM mode bit must be set
         }
 
         [Fact]
@@ -148,7 +151,7 @@ namespace VT03Builder.Tests
         {
             var result = Build(8, 0, TestHelper.Nrom(32, 8, vertical: false));
             var cfg    = GetConfig(result.NorBinary, 0);
-            Assert.Equal(0x01, cfg[7]);   // horizontal = 1
+            Assert.Equal(0x01, cfg[8]);   // mirror[8]: horizontal = 1
         }
 
         [Fact]
@@ -156,27 +159,27 @@ namespace VT03Builder.Tests
         {
             var result = Build(8, 0, TestHelper.Nrom(32, 8, vertical: true));
             var cfg    = GetConfig(result.NorBinary, 0);
-            Assert.Equal(0x00, cfg[7]);   // vertical = 0
+            Assert.Equal(0x00, cfg[8]);   // mirror[8]: vertical = 0
         }
 
         [Fact]
-        public void CoolBoy_Config_ChrHint_256KB_IsZero()
+        public void CoolBoy_Config_ChrSize_256KB()
         {
-            // CHR-RAM 256KB hint = 0x00
-            var mmc3 = TestHelper.Mmc3(256, 256);   // large game
+            // 256KB CHR = 32 × 8KB banks → cfg[7] = 32
+            var mmc3 = TestHelper.Mmc3(256, 256);
             var result = Build(32, 0, mmc3);
             var cfg    = GetConfig(result.NorBinary, 0);
-            Assert.Equal(0x00, cfg[6]);   // 256KB CHR-RAM hint
+            Assert.Equal(32, cfg[7]);   // CHR_SIZE: 256KB / 8KB = 32 banks
         }
 
         [Fact]
-        public void CoolBoy_Config_ChrHint_128KB_IsOne()
+        public void CoolBoy_Config_ChrSize_64KB()
         {
-            // CHR-RAM 128KB hint = 0x01
-            var mmc3 = TestHelper.Mmc3(64, 64);   // small game
+            // 64KB CHR = 8 × 8KB banks → cfg[7] = 8
+            var mmc3 = TestHelper.Mmc3(64, 64);
             var result = Build(8, 0, mmc3);
             var cfg    = GetConfig(result.NorBinary, 0);
-            Assert.Equal(0x01, cfg[6]);   // 128KB CHR-RAM hint
+            Assert.Equal(8, cfg[7]);   // CHR_SIZE: 64KB / 8KB = 8 banks
         }
 
         // ── 4. Flash placement ────────────────────────────────────────────────
@@ -198,20 +201,21 @@ namespace VT03Builder.Tests
             // Two NROM games fit in the same 512KB outer window, so reg0 (outer bank)
             // is the same for both. What differs is cfg[4] (inner PRG bank 0), which
             // encodes the game's offset within the outer window.
-            // Game 1: offset 0x080000 → inner bank = (0x080000 % 0x80000)/8192 = 0
-            // Game 2: offset 0x090000 → inner bank = (0x010000)/8192 = 8
+            // Game 1: at 0x080000 → chrOffset=0x088000 → chr16k=0x22 → cfg[5]=0x22
+            // Game 2: at 0x090000 → chrOffset=0x098000 → chr16k=0x26 → cfg[5]=0x26
             var result = Build(16, 0,
                 TestHelper.Nrom(32, 8),
                 TestHelper.Nrom(32, 8));
             var cfg0 = GetConfig(result.NorBinary, 0);
             var cfg1 = GetConfig(result.NorBinary, 1);
-            Assert.NotEqual(cfg0[4], cfg1[4]);   // inner PRG bank differs
+            // cfg[5]=CHR_START_L reflects each game's CHR flash location (differs per game)
+            Assert.NotEqual(cfg0[5], cfg1[5]);   // CHR source bank differs
         }
 
         [Fact]
         public void CoolBoy_GameCount_WrittenToFlash()
         {
-            const int TableBase = 0x7F00;
+            const int TableBase = 0x004000;   // matches coolboy_menu_assemble.py GTABLE
             var result = Build(8, 0,
                 TestHelper.Nrom(32, 8),
                 TestHelper.Nrom(32, 8));

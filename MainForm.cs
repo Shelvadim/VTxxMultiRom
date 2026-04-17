@@ -22,11 +22,12 @@ namespace VT03Builder.Forms
         private Button      _btnUp        = null!;
         private Button      _btnDown      = null!;
         private ComboBox    _cmbChip      = null!;
-        private ComboBox    _cmbMapper    = null!;
+        private ComboBox    _cmbTarget    = null!;   // hardware target dropdown
         private ComboBox    _cmbSubmapper = null!;
         private ComboBox    _cmbPinSwap   = null!;
         private TextBox     _txtOutput    = null!;
         private Button      _btnBrowseOut = null!;
+
         private CheckBox    _chkNes       = null!;
         private CheckBox    _chkChrRam    = null!;
         private CheckBox    _chkLcd       = null!;
@@ -255,27 +256,29 @@ namespace VT03Builder.Forms
             right.Controls.Add(_btnGenHeader);
             sy += 20;
 
-            // ── Mapper label + dropdown ───────────────────────────────────────
-            right.Controls.Add(Lbl("Mapper:", new Point(10, sy + 2)));
-            _cmbMapper = new ComboBox
+            // ── Target label + dropdown ───────────────────────────────────────
+            right.Controls.Add(Lbl("Target:", new Point(10, sy + 2)));
+            _cmbTarget = new ComboBox
             {
                 Location      = new Point(68, sy),
-                Width         = 120,
+                Width         = 210,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor     = C_CTRL,
                 ForeColor     = C_TEXT,
                 FlatStyle     = FlatStyle.Flat,
                 Font          = new Font("Consolas", 8.5f)
             };
-            _cmbMapper.Items.Add("256  (OneBus / VTxx)");
-            _cmbMapper.SelectedIndex = 0;
-            right.Controls.Add(_cmbMapper);
+            foreach (var t in TargetRegistry.All)
+                _cmbTarget.Items.Add(new ComboBoxTargetItem(t));
+            _cmbTarget.SelectedIndex = 0;   // default: VTxx OneBus
+            _cmbTarget.SelectedIndexChanged += OnTargetChanged;
+            right.Controls.Add(_cmbTarget);
 
-            // ── Submapper label + dropdown (right of mapper) ──────────────────
-            right.Controls.Add(Lbl("Submapper:", new Point(200, sy + 2)));
+            // ── Submapper label + dropdown (right of target) ──────────────────
+            right.Controls.Add(Lbl("Submapper:", new Point(290, sy + 2)));
             _cmbSubmapper = new ComboBox
             {
-                Location      = new Point(282, sy),
+                Location      = new Point(374, sy),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor     = C_CTRL,
                 ForeColor     = C_TEXT,
@@ -283,9 +286,8 @@ namespace VT03Builder.Forms
                 Font          = new Font("Consolas", 8.5f),
                 Anchor        = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            foreach (var (num, name) in SubmapperItems)
-                _cmbSubmapper.Items.Add(new ComboBoxSubmapperItem(num, name));
-            _cmbSubmapper.SelectedIndex = 0;   // default: 0 — Normal
+            PopulateSubmappers();   // fills from initial target
+            _cmbSubmapper.SelectedIndex = 0;
             _cmbSubmapper.SelectedIndexChanged += OnSubmapperChanged;
             right.Controls.Add(_cmbSubmapper);
 
@@ -399,7 +401,7 @@ namespace VT03Builder.Forms
             right.Controls.Add(_rtbLog);
 
             right.Resize += (s, e) =>
-                LayoutRight(right, _cmbChip, _cmbMapper, _cmbSubmapper,
+                LayoutRight(right, _cmbChip, _cmbTarget, _cmbSubmapper,
                             _txtOutput, _btnBrowseOut,
                             _btnBuild, _lblStatus, _rtbLog);
 
@@ -409,7 +411,7 @@ namespace VT03Builder.Forms
             right.Size = new Size(body.ClientSize.Width - LEFT_W - 24,
                                   body.ClientSize.Height - 16);
             LayoutLeft(left);
-            LayoutRight(right, _cmbChip, _cmbMapper, _cmbSubmapper,
+            LayoutRight(right, _cmbChip, _cmbTarget, _cmbSubmapper,
                         _txtOutput, _btnBrowseOut,
                         _btnBuild, _lblStatus, _rtbLog);
 
@@ -443,7 +445,7 @@ namespace VT03Builder.Forms
         }
 
         private static void LayoutRight(Panel right, ComboBox cmbChip,
-            ComboBox cmbMapper, ComboBox cmbSubmapper,
+            ComboBox cmbTarget, ComboBox cmbSubmapper,
             TextBox txtOut, Button btnOut, Button btnBuild,
             Label lblStatus, RichTextBox log)
         {
@@ -452,7 +454,7 @@ namespace VT03Builder.Forms
             int rw = Math.Max(10, w - 20);
 
             cmbChip.Width      = rw - 88;
-            // Submapper dropdown stretches to fill remaining space right of its fixed label+mapper
+            // Submapper dropdown stretches to fill remaining space right of target+label
             int smLeft = cmbSubmapper.Left;
             cmbSubmapper.Width = Math.Max(60, rw - smLeft + 10);
             txtOut .Width      = Math.Max(60, rw - 90);
@@ -489,8 +491,7 @@ namespace VT03Builder.Forms
                     bad++; continue;
                 }
                 string? compatWarn = SourceMapperRegistry.Get(rom.Mapper)
-                                         ?.CompatibilityWarning(rom,
-                                               TargetRegistry.GetRequired("vtxx"));
+                                         ?.CompatibilityWarning(rom, SelectedTarget());
                 if (compatWarn != null)
                 {
                     // CHR-RAM MMC3 games will grey screen unless the console has CHR-RAM hardware
@@ -516,7 +517,7 @@ namespace VT03Builder.Forms
                         $"PRG:{rom.PrgSize / 1024}KB  " +
                         $"CHR:{(rom.ChrSize > 0 ? rom.ChrSize / 1024 + "KB" : "RAM")}" +
                         (SourceMapperRegistry.IsSupported(rom.Mapper)
-                            ? "" : "  ⚠ mapper not tested on OneBus (VTxx)"),
+                            ? "" : "  ⚠ mapper not supported by this target"),
                         SourceMapperRegistry.IsSupported(rom.Mapper)
                             ? C_GREEN : C_YELLOW);
                 }
@@ -571,16 +572,52 @@ namespace VT03Builder.Forms
             }
         }
 
+        private void OnTargetChanged(object? s, EventArgs e)
+        {
+            var target = SelectedTarget();
+            PopulateSubmappers();
+
+            // LCD init only applies to VTxx OneBus
+            if (_chkLcd != null)
+                _chkLcd.Enabled = target.HasKernelArea;
+
+            // CHR-RAM toggle: hidden for targets that always use CHR-RAM
+            if (_chkChrRam != null)
+            {
+                _chkChrRam.Enabled = !target.AlwaysChrRam;
+                if (target.AlwaysChrRam) _chkChrRam.Checked = true;
+            }
+
+            Log($"Target: {target.DisplayName}  (mapper {target.OutputMapper})", C_DIM);
+            RefreshList();
+            UpdateSpace();
+        }
+
+        private void PopulateSubmappers()
+        {
+            var target = SelectedTarget();
+            _cmbSubmapper.Items.Clear();
+            foreach (var sm in target.Submappers)
+                _cmbSubmapper.Items.Add(new ComboBoxSubmapperItem(sm.Number, $"{sm.Number,2}  {sm.Name}"));
+            _cmbSubmapper.SelectedIndex = 0;
+        }
+
+        private IHardwareTarget SelectedTarget()
+            => (_cmbTarget?.SelectedItem as ComboBoxTargetItem)?.Target
+               ?? TargetRegistry.GetRequired(TargetRegistry.DefaultId);
+
         private void OnSubmapperChanged(object? s, EventArgs e)
         {
-            var item = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
-            int sm   = item?.Number ?? 0;
-            if (sm >= 11 && sm <= 15)
+            var item   = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
+            int sm     = item?.Number ?? 0;
+            var target = SelectedTarget();
+
+            // Show warning for submappers that have one (e.g. VTxx opcode-swap variants)
+            var smInfo = target.Submappers.FirstOrDefault(x => x.Number == sm);
+            if (smInfo?.Warning != null)
             {
-                Log($"⚠ Submapper {sm}: This console uses hardware CPU opcode bit-swapping.", C_YELLOW);
-                Log( "  Standard NES ROMs will NOT work correctly on this hardware.", C_YELLOW);
-                Log( "  Only use ROMs that were originally compiled for this console type.", C_YELLOW);
-                Log( "  The submapper value is recorded in the NES 2.0 header for emulator use only.", C_DIM);
+                Log($"⚠ Submapper {sm}: {smInfo.Warning}", C_YELLOW);
+                Log( "  Only use ROMs compiled specifically for this console type.", C_YELLOW);
             }
         }
 
@@ -588,14 +625,27 @@ namespace VT03Builder.Forms
         {
             var item      = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
             int submapper = item?.Number ?? 0;
+            var target    = SelectedTarget();
             string? chipStr = _cmbChip.SelectedItem as string;
             if (string.IsNullOrWhiteSpace(chipStr))
                 chipStr = "8 MB";
             int chipMb = int.TryParse(chipStr.Split(' ')[0], out var val) ? val : 8;
 
-            string desc = NesFileWriter.DescribeHeader(submapper, chipMb);
-            foreach (string line in desc.Split('\n'))
-                Log(line.TrimEnd(), C_ACCENT);
+            // VTxx OneBus uses the NES 2.0 header description tool
+            if (target.Id == "vtxx")
+            {
+                string desc = NesFileWriter.DescribeHeader(submapper, chipMb);
+                foreach (string line in desc.Split('\n'))
+                    Log(line.TrimEnd(), C_ACCENT);
+            }
+            else
+            {
+                Log($"── Header info: {target.DisplayName} ─────────────────────", C_ACCENT);
+                Log($"  Mapper:    {target.OutputMapper}", C_ACCENT);
+                Log($"  Submapper: {submapper}", C_ACCENT);
+                Log($"  Chip:      {chipMb} MB", C_ACCENT);
+                Log($"  CHR-RAM:   {(target.AlwaysChrRam ? "always" : "optional")}", C_ACCENT);
+            }
         }
 
         private void OnBrowseOut(object? s, EventArgs e)
@@ -622,13 +672,13 @@ namespace VT03Builder.Forms
             {
                 Status("Set an output path first.", C_RED); return;
             }
-
             _btnBuild.Enabled = false;
             Status("Building…");
             Log("", null);
             Log("── Build started ─────────────────────────────────────────", C_ACCENT);
             var smItem = _cmbSubmapper.SelectedItem as ComboBoxSubmapperItem;
-            Log($"Mapper 256  Submapper {smItem?.Number ?? 0}: {smItem?.ToString()?.Trim() ?? "Normal"}", C_DIM);
+            var tgt    = SelectedTarget();
+            Log($"Target: {tgt.DisplayName}  Submapper {smItem?.Number ?? 0}: {smItem?.ToString()?.Trim() ?? "Normal"}", C_DIM);
 
             bool          ok     = true;
             BuildResult?  result = null;
@@ -653,15 +703,14 @@ namespace VT03Builder.Forms
 
                 if (cfg.GenerateNes)
                 {
-                    // .nes for FCEUX (mapper 256 — NROM works; use NintendulatorNRS (.unf) for MMC3)
+                    var tgt2 = SelectedTarget();
                     string nesPath = Path.ChangeExtension(binPath, ".nes");
                     File.WriteAllBytes(nesPath, result.NesFile);
-                    Log($"NES: {nesPath}  (FCEUX — mapper 256)", null);
+                    Log($"NES: {nesPath}  (mapper {tgt2.OutputMapper})", null);
 
-                    // .unf for NintendulatorNRS (UNL-OneBus UNIF format)
                     string unfPath = Path.ChangeExtension(binPath, ".unf");
                     File.WriteAllBytes(unfPath, result.UnifFile);
-                    Log($"UNF: {unfPath}  (NintendulatorNRS — UNL-OneBus)", null);
+                    Log($"UNF: {unfPath}", null);
                 }
             }
             catch (Exception ex)
@@ -687,12 +736,17 @@ namespace VT03Builder.Forms
 
             string info = $"Multicart built!\n\n" +
                           $"BIN: {binOut}\n" +
-                          $"Size: {sz / 1024} KB  ({result?.GameCount ?? 0} games)";
+                          $"Size: {sz / 1024} KB  ({result?.GameCount ?? 0} games)\n" +
+                          $"Target: {SelectedTarget().DisplayName}";
             if (cfg.GenerateNes)
-                info += $"\n\nTest files:\n" +
-                        $"  .nes → FCEUX (mapper 256, NROM only)\n" +
-                        $"  .unf → NintendulatorNRS (UNL-OneBus, all mappers)\n" +
-                        $"  Note: for MMC3 games use NintendulatorNRS (.unf)";
+            {
+                var tgt3 = SelectedTarget();
+                info += tgt3.Id == "vtxx"
+                    ? "\n\nTest files:\n" +
+                      "  .nes → FCEUX (NROM only)\n" +
+                      "  .unf → NintendulatorNRS (UNL-OneBus, all mappers)"
+                    : "\n\nTest files generated (.nes / .unf).";
+            }
             info += "\n\nFlash the .bin to your NOR chip using the T48 / Xgpro.";
 
             MessageBox.Show(info, "Build Complete",
@@ -725,7 +779,7 @@ namespace VT03Builder.Forms
             AllowChrRam  = _chkChrRam?.Checked ?? false,
             InitLcd      = _chkLcd?.Checked    ?? false,
             PinSwap      = _cmbPinSwap?.SelectedIndex ?? 0,
-            // Mapper is now computed from TargetId (always 256 for VTxx)
+            TargetId     = SelectedTarget().Id,
             Submapper    = (_cmbSubmapper?.SelectedItem as ComboBoxSubmapperItem)?.Number ?? 0,
             ChipSizeMb   = _cmbChip?.SelectedIndex switch
             {
@@ -756,13 +810,13 @@ namespace VT03Builder.Forms
                 if (!g.IsValid)                     { status = "✗ Bad";     rowColor = C_RED; }
                 else if (g.HasChrRam && g.Mapper==4)
                 {
-                    bool allowChrRam = _chkChrRam?.Checked ?? false;
-                    status   = allowChrRam ? "⚠ CHR-RAM" : "✗ CHR-RAM";
-                    rowColor = allowChrRam ? C_YELLOW    : C_RED;
+                    var tgt = SelectedTarget();
+                    bool chrRamOk = tgt.AlwaysChrRam || (_chkChrRam?.Checked ?? false);
+                    status   = chrRamOk ? "⚠ CHR-RAM" : "✗ CHR-RAM";
+                    rowColor = chrRamOk ? C_YELLOW    : C_RED;
                 }
                 else if (SourceMapperRegistry.Get(g.Mapper)
-                             ?.CompatibilityWarning(g,
-                                   TargetRegistry.GetRequired("vtxx")) != null)
+                             ?.CompatibilityWarning(g, SelectedTarget()) != null)
                                             { status = "⚠ IRQ?";   rowColor = C_YELLOW; }
                 else if (!SourceMapperRegistry.IsSupported(g.Mapper))
                                             { status = "⚠ Mapper";  rowColor = C_YELLOW; }
@@ -864,22 +918,14 @@ namespace VT03Builder.Forms
             Cursor    = Cursors.Hand
         };
 
-        // ── Submapper table (NESdev mapper 256 submapper reference) ───────────
-        //  Number → display name shown in the dropdown
-        private static readonly (int Number, string Name)[] SubmapperItems =
-        {
-            ( 0, " 0  Normal"),
-            ( 1, " 1  Waixing VT03"),
-            ( 2, " 2  Power Joy Supermax"),
-            ( 3, " 3  Zechess / Hummer Team"),
-            ( 4, " 4  Sports Game 69-in-1"),
-            ( 5, " 5  Waixing VT02"),
-            (11, "11  Vibes"),
-            (12, "12  Cheertone"),
-            (13, "13  Cube Tech"),
-            (14, "14  Karaoto"),
-            (15, "15  Jungletac"),
-        };
+    }   // end class MainForm
+
+    // ── Helper: ComboBox item that carries the hardware target ────────────────
+    internal sealed class ComboBoxTargetItem
+    {
+        public IHardwareTarget Target { get; }
+        public ComboBoxTargetItem(IHardwareTarget target) { Target = target; }
+        public override string ToString() => $"{Target.OutputMapper,3}  {Target.DisplayName}";
     }
 
     // ── Helper: ComboBox item that carries the submapper number ───────────────
